@@ -2,7 +2,7 @@
 norm_cfg = dict(type='SyncBN', requires_grad=True)
 model = dict(
     type='EncoderDecoder',
-    #pretrained='open-mmlab://resnet50_v1c',
+    # pretrained='open-mmlab://resnet50_v1c',
     pretrained='data/pretrained/rednet50.pth',
     backbone=dict(
         type='RedNet',
@@ -16,7 +16,7 @@ model = dict(
         style='pytorch'),
         #contract_dilation=True),
     neck=dict(
-        type='FPN',
+        type='FPN_involution',
         in_channels=[256, 512, 1024, 2048],
         out_channels=256,
         num_outs=4),
