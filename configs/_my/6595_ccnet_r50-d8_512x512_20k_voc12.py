@@ -5,8 +5,4 @@ _base_ = [
 ]
 model = dict(
     decode_head=dict(num_classes=21), auxiliary_head=dict(num_classes=21))
-optimizer = dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0005)
-
-# optimizer
-# optimizer = dict(_delete_=True, type='AdamW', lr=0.000025, weight_decay=0.0001)
-# optimizer_config = dict(_delete_=True, grad_clip=dict(max_norm=1, norm_type=2))
+optimizer = dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0005)
