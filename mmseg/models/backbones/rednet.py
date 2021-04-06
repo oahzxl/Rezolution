@@ -7,6 +7,7 @@ from mmcv.utils.parrots_wrapper import _BatchNorm
 from ..builder import BACKBONES
 from .base_backbone import BaseBackbone
 from ..utils.involution_cuda import involution
+# from ..utils.involution_naive import involution
 
 
 class Bottleneck(nn.Module):

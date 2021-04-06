@@ -4,6 +4,7 @@ from mmcv.cnn import ConvModule, xavier_init
 
 from ..builder import NECKS
 from ..utils.involution_cuda import involution
+# from ..utils.involution_naive import involution
 
 
 @NECKS.register_module()
