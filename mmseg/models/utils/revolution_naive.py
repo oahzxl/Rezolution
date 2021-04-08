@@ -2,6 +2,89 @@ import torch
 import torch.nn as nn
 from mmcv.cnn import ConvModule
 import math
+from mmcv.utils.parrots_wrapper import _BatchNorm
+from mmcv.cnn import constant_init, kaiming_init
+
+
+# class RevolutionNaive(nn.Module):
+#     def __init__(self,
+#                  channels,
+#                  kernel_size,
+#                  stride,
+#                  ratio):
+#         super(RevolutionNaive, self).__init__()
+#         self.kernel_size = kernel_size
+#         self.stride = stride
+#         self.ratio = ratio
+#         self.new_size = int(ratio * stride)
+#         self.channels = channels
+#
+#         self.unfold = torch.nn.Unfold(
+#             kernel_size, 1, (kernel_size - 1) // 2, stride)
+#         self.conv1 = ConvModule(
+#             in_channels=kernel_size * channels * 2 + kernel_size * kernel_size,
+#             out_channels=channels * self.new_size * self.new_size * kernel_size * kernel_size // 4,
+#             kernel_size=1,
+#             padding=0,
+#             stride=1,
+#             conv_cfg=None,
+#             norm_cfg=dict(type='BN'),
+#             act_cfg=dict(type='ReLU'))
+#         self.conv2 = ConvModule(
+#             in_channels=channels * self.new_size * self.new_size * kernel_size * kernel_size // 4,
+#             out_channels=channels * self.new_size * self.new_size * kernel_size * kernel_size,
+#             kernel_size=1,
+#             stride=1,
+#             conv_cfg=None,
+#             norm_cfg=None,
+#             act_cfg=None)
+#
+#         self.init()
+#
+#     def forward(self, x):
+#         batch_size, channels, width, height = x.shape
+#
+#         x = self.unfold(x)
+#         x = x.view(batch_size, self.channels, self.kernel_size, self.kernel_size,
+#                    math.ceil(width / self.stride), -1)
+#
+#         x1 = torch.max(x, dim=1, keepdim=True)
+#         x1 = x1.values.view(batch_size, -1, x.shape[-2], x.shape[-1])
+#         x2 = torch.max(x, dim=2, keepdim=True)
+#         x2 = x2.values.view(batch_size, -1, x.shape[-2], x.shape[-1])
+#         x3 = torch.max(x, dim=3, keepdim=True)
+#         x3 = x3.values.view(batch_size, -1, x.shape[-2], x.shape[-1])
+#
+#         weight = torch.cat((x1, x2, x3), dim=1)
+#         weight = self.conv2(self.conv1(weight))
+#         weight = weight.view(batch_size, self.channels,
+#                              self.kernel_size * self.kernel_size,
+#                              self.new_size, self.new_size,
+#                              weight.shape[2], weight.shape[3])
+#         weight = nn.functional.softmax(weight, dim=2)
+#
+#         x = x.view(x.shape[0], x.shape[1], -1,
+#                    x.shape[-2], x.shape[-1]).unsqueeze(3).unsqueeze(3)
+#         x = x * weight
+#         x = torch.mean(x, dim=2)
+#
+#         x = x.permute(0, 1, 4, 2, 5, 3)
+#         x = x.reshape(
+#             batch_size, self.channels,
+#             x.shape[2] * x.shape[3],
+#             x.shape[4] * x.shape[5])
+#
+#         if self.ratio == 1 and x.shape != (batch_size, channels, width, height):
+#             x = x[:batch_size, :channels, :width, :height]
+#
+#         return x
+#
+#     def init(self):
+#         for m in self.modules():
+#             if isinstance(m, nn.Conv2d):
+#                 kaiming_init(m)
+#             elif isinstance(m, (_BatchNorm, nn.GroupNorm)):
+#                 constant_init(m, 1)
 
 
 class RevolutionNaive(nn.Module):
@@ -61,10 +144,18 @@ class RevolutionNaive(nn.Module):
             x.shape[2] * x.shape[3],
             x.shape[4] * x.shape[5])
 
-        if x.shape != (batch_size, channels, width, height):
+        if self.ratio == 1 and x.shape != (batch_size, channels, width, height):
             x = x[:batch_size, :channels, :width, :height]
 
         return x
+
+    def init(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                kaiming_init(m)
+            elif isinstance(m, (_BatchNorm, nn.GroupNorm)):
+                constant_init(m, 1)
+
 # B = 2
 # W = 64
 # H = 64
