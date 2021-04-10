@@ -48,12 +48,9 @@ class RevolutionNaive(nn.Module):
         x = x.view(batch_size, self.channels, self.kernel_size, self.kernel_size,
                    math.ceil(width / self.stride), -1)
 
-        x1 = torch.max(x, dim=1, keepdim=True)
-        x1 = x1.values.view(batch_size, -1, x.shape[-2], x.shape[-1])
-        x2 = torch.max(x, dim=2, keepdim=True)
-        x2 = x2.values.view(batch_size, -1, x.shape[-2], x.shape[-1])
-        x3 = torch.max(x, dim=3, keepdim=True)
-        x3 = x3.values.view(batch_size, -1, x.shape[-2], x.shape[-1])
+        x1 = torch.mean(x, dim=1, keepdim=True).view(batch_size, -1, x.shape[-2], x.shape[-1])
+        x2 = torch.mean(x, dim=2, keepdim=True).view(batch_size, -1, x.shape[-2], x.shape[-1])
+        x3 = torch.mean(x, dim=3, keepdim=True).view(batch_size, -1, x.shape[-2], x.shape[-1])
         weight = torch.cat((x1, x2, x3), dim=1)
 
         weight = self.conv2(self.conv1(weight))
