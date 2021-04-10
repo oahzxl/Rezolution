@@ -1,11 +1,10 @@
 # model settings
-# norm_cfg = dict(type='SyncBN', requires_grad=True)
 norm_cfg = dict(type='BN', requires_grad=True)
 model = dict(
     type='EncoderDecoder',
     pretrained='open-mmlab://resnet50_v1c',
     backbone=dict(
-        type='RevNetV1c',
+        type='ResNetV1c',
         depth=50,
         num_stages=4,
         out_indices=(0, 1, 2, 3),
@@ -16,11 +15,11 @@ model = dict(
         style='pytorch',
         contract_dilation=True),
     decode_head=dict(
-        type='CCHead',
+        type='RevPSPHead',
         in_channels=2048,
         in_index=3,
         channels=512,
-        recurrence=2,
+        pool_scales=(1, 2, 3, 6),
         dropout_ratio=0.1,
         num_classes=19,
         norm_cfg=norm_cfg,

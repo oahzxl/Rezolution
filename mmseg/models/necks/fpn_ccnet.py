@@ -1,13 +1,13 @@
 import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import ConvModule, xavier_init
+from ..utils.revolution_naive import RevolutionNaive
 
 from ..builder import NECKS
-from ..utils.revolution_naive import RevolutionNaive
 
 
 @NECKS.register_module()
-class FPNRevolution(nn.Module):
+class FPNCCNet(nn.Module):
     """Feature Pyramid Network.
 
     This is an implementation of - Feature Pyramid Networks for Object
@@ -51,7 +51,7 @@ class FPNRevolution(nn.Module):
         >>> scales = [340, 170, 84, 43]
         >>> inputs = [torch.rand(1, c, s, s)
         ...           for c, s in zip(in_channels, scales)]
-        >>> self = FPNRevolution(in_channels, 11, len(in_channels)).eval()
+        >>> self = FPN(in_channels, 11, len(in_channels)).eval()
         >>> outputs = self.forward(inputs)
         >>> for i in range(len(outputs)):
         ...     print(f'outputs[{i}].shape = {outputs[i].shape}')
@@ -75,7 +75,7 @@ class FPNRevolution(nn.Module):
                  norm_cfg=None,
                  act_cfg=None,
                  upsample_cfg=dict(mode='nearest')):
-        super(FPNRevolution, self).__init__()
+        super(FPNCCNet, self).__init__()
         assert isinstance(in_channels, list)
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -112,11 +112,11 @@ class FPNRevolution(nn.Module):
         self.lateral_convs = nn.ModuleList()
         self.fpn_convs = nn.ModuleList()
         self.revolutions = nn.ModuleList([RevolutionNaive(
-                channels=self.out_channels,
-                kernel_size=3,
-                stride=1,
-                ratio=2,
-            )] * 3)
+            channels=self.out_channels,
+            kernel_size=3,
+            stride=1,
+            ratio=2,
+        )] * 3)
 
         for i in range(self.start_level, self.backbone_end_level):
             l_conv = ConvModule(
@@ -136,6 +136,7 @@ class FPNRevolution(nn.Module):
                 norm_cfg=norm_cfg,
                 act_cfg=act_cfg,
                 inplace=False)
+
             self.lateral_convs.append(l_conv)
             self.fpn_convs.append(fpn_conv)
 
@@ -179,13 +180,6 @@ class FPNRevolution(nn.Module):
         for i in range(used_backbone_levels - 1, 0, -1):
             # In some cases, fixing `scale factor` (e.g. 2) is preferred, but
             #  it cannot co-exist with `size` in `F.interpolate`.
-            # prev_shape = laterals[i - 1].shape[2:]
-            # laterals[i - 1] += F.interpolate(
-            #    laterals[i], size=prev_shape, **self.upsample_cfg)
-
-            # a = self.revolutions[i - 1](laterals[i])
-            # if laterals[i - 1].size(2) != a.size(2) or laterals[i - 1].size(3) != a.size(3):
-            #     print(1)
             laterals[i - 1] += self.revolutions[i - 1](laterals[i], laterals[i - 1].shape)
 
         # build outputs
@@ -216,4 +210,4 @@ class FPNRevolution(nn.Module):
                         outs.append(self.fpn_convs[i](F.relu(outs[-1])))
                     else:
                         outs.append(self.fpn_convs[i](outs[-1]))
-        return tuple(outs)
+        return outs
