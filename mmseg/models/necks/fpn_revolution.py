@@ -111,12 +111,12 @@ class FPNRevolution(nn.Module):
 
         self.lateral_convs = nn.ModuleList()
         self.fpn_convs = nn.ModuleList()
-        self.revolutions = RevolutionNaive(
+        self.revolutions = nn.ModuleList([RevolutionNaive(
                 channels=self.out_channels,
                 kernel_size=3,
-                stride=2,
+                stride=1,
                 ratio=2,
-            )
+            )] * 4)
 
         for i in range(self.start_level, self.backbone_end_level):
             l_conv = ConvModule(
@@ -182,7 +182,11 @@ class FPNRevolution(nn.Module):
             # prev_shape = laterals[i - 1].shape[2:]
             # laterals[i - 1] += F.interpolate(
             #    laterals[i], size=prev_shape, **self.upsample_cfg)
-            laterals[i - 1] += self.revolutions(laterals[i])
+
+            # a = self.revolutions[i - 1](laterals[i])
+            # if laterals[i - 1].size(2) != a.size(2) or laterals[i - 1].size(3) != a.size(3):
+            #     print(1)
+            laterals[i - 1] += self.revolutions[i - 1](laterals[i], laterals[i - 1].shape)
 
         # build outputs
         # part 1: from original levels
