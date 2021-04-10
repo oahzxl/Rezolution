@@ -62,12 +62,12 @@ class RevolutionNaive(nn.Module):
                              self.new_size, self.new_size,
                              weight.shape[2], weight.shape[3])
 
-        mask = weight.view(batch_size, self.channels, -1,
-                           weight.shape[-2], weight.shape[-1])
-        mask = torch.sum(mask, dim=2).unsqueeze(2).unsqueeze(2).unsqueeze(2)
-        mask = torch.sigmoid(mask)
-        weight = nn.functional.softmax(weight, dim=2) * mask
-        # weight = nn.functional.softmax(weight, dim=2)
+        # mask = weight.view(batch_size, self.channels, -1,
+        #                    weight.shape[-2], weight.shape[-1])
+        # mask = torch.sum(mask, dim=2).unsqueeze(2).unsqueeze(2).unsqueeze(2)
+        # mask = torch.sigmoid(mask)
+        # weight = nn.functional.softmax(weight, dim=2) * mask
+        weight = nn.functional.softmax(weight, dim=2)
 
         x = x.view(x.shape[0], x.shape[1], -1,
                    x.shape[-2], x.shape[-1]).unsqueeze(3).unsqueeze(3)
