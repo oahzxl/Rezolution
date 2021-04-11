@@ -54,6 +54,7 @@ class PPM(nn.Module):
                         kernel_size={1: 1, 2: 3, 3: 3, 6: 5}[pool_scale],
                         stride=1,
                         ratio={1: 32, 2: 16, 3: 11, 6: 6}[pool_scale],
+                        groups=channels // 4
                     ) for pool_scale in pool_scales])
 
     def forward(self, x):

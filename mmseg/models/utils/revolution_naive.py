@@ -26,7 +26,7 @@ class RevolutionNaive(nn.Module):
             kernel_size, 1, (kernel_size - 1) // 2, stride)
         self.conv1 = ConvModule(
             in_channels=self.groups * (kernel_size * self.group_channels * 2 + kernel_size * kernel_size),
-            out_channels=self.groups * self.new_size * self.new_size * kernel_size * kernel_size // 4,
+            out_channels=self.groups * self.new_size * self.new_size * kernel_size * kernel_size // 10,
             kernel_size=1,
             padding=0,
             stride=1,
@@ -34,7 +34,7 @@ class RevolutionNaive(nn.Module):
             norm_cfg=dict(type='BN'),
             act_cfg=dict(type='ReLU'))
         self.conv2 = ConvModule(
-            in_channels=self.groups * self.new_size * self.new_size * kernel_size * kernel_size // 4,
+            in_channels=self.groups * self.new_size * self.new_size * kernel_size * kernel_size // 10,
             out_channels=self.groups * self.new_size * self.new_size * kernel_size * kernel_size,
             kernel_size=1,
             stride=1,
