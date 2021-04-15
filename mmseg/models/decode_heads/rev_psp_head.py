@@ -33,13 +33,21 @@ class PPM(nn.Module):
         self.norm_cfg = norm_cfg
         self.act_cfg = act_cfg
 
-        self.pool = nn.AdaptiveAvgPool2d((32, 32))
+        self.pool = nn.AdaptiveAvgPool2d((64, 64))
 
         self.ppm = nn.ModuleList()
         for pool_scale in pool_scales:
             self.ppm.append(
                 nn.Sequential(
                     nn.AdaptiveAvgPool2d(pool_scale),
+                    # RevolutionNaive(
+                    #     channels=channels,
+                    #     kernel_size={1: 64, 2: 32, 3: 22, 6: 11}[pool_scale],
+                    #     stride={1: 64, 2: 32, 3: 22, 6: 11}[pool_scale],
+                    #     padding={1: 0, 2: 0, 3: 1, 6: 1}[pool_scale],
+                    #     ratio={1: 1.0/64, 2: 1.0/22, 3: 1.0/16, 6: 1.0/11}[pool_scale],
+                    #     groups=channels // 16
+                    # ),
                     ConvModule(
                         self.in_channels,
                         self.channels,
@@ -48,14 +56,20 @@ class PPM(nn.Module):
                         norm_cfg=self.norm_cfg,
                         act_cfg=self.act_cfg),
                     ))
-        import math
-        self.aa = nn.ModuleList([RevolutionNaive(
-                        channels=channels,
-                        kernel_size={1: 1, 2: 3, 3: 3, 6: 5}[pool_scale],
-                        stride=1,
-                        ratio={1: 32, 2: 16, 3: 11, 6: 6}[pool_scale],
-                        groups=channels // 4
-                    ) for pool_scale in pool_scales])
+        # self.revolution = nn.ModuleList([RevolutionNaive(
+        #                 channels=channels,
+        #                 kernel_size={1: 1, 2: 2, 3: 2, 6: 3}[pool_scale],
+        #                 stride={1: 1, 2: 1, 3: 1, 6: 1}[pool_scale],
+        #                 padding={1: 0, 2: 0, 3: 1, 6: 2}[pool_scale],
+        #                 ratio={1: 64, 2: 64, 3: 16, 6: 8}[pool_scale],
+        #                 groups=channels // 4
+        #             ) for pool_scale in pool_scales])
+        self.revolution = nn.ModuleList([RevolutionNaive(
+            channels=channels,
+            kernel_size={1: 1, 2: 3, 3: 3, 6: 5}[pool_scale],
+            stride=1,
+            ratio={1: 32, 2: 16, 3: 11, 6: 6}[pool_scale],
+            groups=channels // 4) for pool_scale in pool_scales])
 
     def forward(self, x):
         """Forward function."""
@@ -63,9 +77,13 @@ class PPM(nn.Module):
         ppm_outs = []
         for n, ppm in enumerate(self.ppm):
             ppm_out = ppm(x)
-            upsampled_ppm_out = self.aa[n](ppm_out)
-            if upsampled_ppm_out.shape[-1] in [33, 36]:
-                upsampled_ppm_out = self.pool(upsampled_ppm_out)
+            upsampled_ppm_out = self.revolution[n](ppm_out)
+            if upsampled_ppm_out.shape[2:] != x.shape[2:]:
+                upsampled_ppm_out = resize(
+                    upsampled_ppm_out,
+                    size=x.size()[2:],
+                    mode='bilinear',
+                    align_corners=self.align_corners)
             ppm_outs.append(upsampled_ppm_out)
         return ppm_outs
 
@@ -102,12 +120,14 @@ class RevPSPHead(BaseDecodeHead):
             conv_cfg=self.conv_cfg,
             norm_cfg=self.norm_cfg,
             act_cfg=self.act_cfg)
-        self.pool = nn.AdaptiveAvgPool2d((32, 32))
+        self.pool = nn.AdaptiveAvgPool2d((64, 64))
 
     def forward(self, inputs):
         """Forward function."""
         x = self._transform_inputs(inputs)
-        x = self.pool(x)
+        # if x.shape[2:] != (64, 64):
+        #     print(x.shape)
+        # x = self.pool(x)
         psp_outs = [x]
         psp_outs.extend(self.psp_modules(x))
         psp_outs = torch.cat(psp_outs, dim=1)
