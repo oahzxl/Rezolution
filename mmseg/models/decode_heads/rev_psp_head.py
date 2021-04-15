@@ -56,20 +56,20 @@ class PPM(nn.Module):
                         norm_cfg=self.norm_cfg,
                         act_cfg=self.act_cfg),
                     ))
-        # self.revolution = nn.ModuleList([RevolutionNaive(
-        #                 channels=channels,
-        #                 kernel_size={1: 1, 2: 2, 3: 2, 6: 3}[pool_scale],
-        #                 stride={1: 1, 2: 1, 3: 1, 6: 1}[pool_scale],
-        #                 padding={1: 0, 2: 0, 3: 1, 6: 2}[pool_scale],
-        #                 ratio={1: 64, 2: 64, 3: 16, 6: 8}[pool_scale],
-        #                 groups=channels // 4
-        #             ) for pool_scale in pool_scales])
         self.revolution = nn.ModuleList([RevolutionNaive(
-            channels=channels,
-            kernel_size={1: 1, 2: 3, 3: 3, 6: 5}[pool_scale],
-            stride=1,
-            ratio={1: 32, 2: 16, 3: 11, 6: 6}[pool_scale],
-            groups=channels // 4) for pool_scale in pool_scales])
+                        channels=channels,
+                        kernel_size={1: 1, 2: 2, 3: 2, 6: 3}[pool_scale],
+                        stride={1: 1, 2: 1, 3: 1, 6: 1}[pool_scale],
+                        padding={1: 0, 2: 0, 3: 1, 6: 2}[pool_scale],
+                        ratio={1: 64, 2: 64, 3: 16, 6: 8}[pool_scale],
+                        groups=channels // 4
+                    ) for pool_scale in pool_scales])
+        # self.revolution = nn.ModuleList([RevolutionNaive(
+        #     channels=channels,
+        #     kernel_size={1: 1, 2: 3, 3: 3, 6: 5}[pool_scale],
+        #     stride=1,
+        #     ratio={1: 32, 2: 16, 3: 11, 6: 6}[pool_scale],
+        #     groups=channels // 4) for pool_scale in pool_scales])
 
     def forward(self, x):
         """Forward function."""

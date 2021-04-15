@@ -6,14 +6,14 @@ from mmcv.utils.parrots_wrapper import _BatchNorm
 from mmcv.cnn import constant_init, kaiming_init
 
 
-class RevolutionNaive(nn.Module):
+class RevolutionNaive0(nn.Module):
     def __init__(self,
                  channels,
                  kernel_size,
                  stride,
                  ratio,
                  groups=16):
-        super(RevolutionNaive, self).__init__()
+        super(RevolutionNaive0, self).__init__()
         self.kernel_size = kernel_size
         self.stride = stride
         self.ratio = ratio
@@ -93,7 +93,7 @@ class RevolutionNaive(nn.Module):
                 constant_init(m, 1)
 
 
-class RevolutionNaive0(nn.Module):
+class RevolutionNaive(nn.Module):
     def __init__(self,
                  channels,
                  kernel_size,
@@ -101,7 +101,7 @@ class RevolutionNaive0(nn.Module):
                  ratio,
                  padding,
                  groups=16):
-        super(RevolutionNaive0, self).__init__()
+        super(RevolutionNaive, self).__init__()
         self.kernel_size = kernel_size
         self.stride = stride
         self.ratio = ratio
