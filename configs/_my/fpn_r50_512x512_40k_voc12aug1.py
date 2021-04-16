@@ -7,3 +7,5 @@ optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005)
 data = dict(
     samples_per_gpu=6,
     workers_per_gpu=6,)
+
+# 0.001效果还是不大行 试试看更小的

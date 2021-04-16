@@ -6,20 +6,20 @@ from mmcv.utils.parrots_wrapper import _BatchNorm
 from mmcv.cnn import constant_init, kaiming_init
 
 
-class RevolutionNaive0(nn.Module):
+class RevolutionNaive(nn.Module):
     def __init__(self,
                  channels,
                  kernel_size,
                  stride,
                  ratio,
-                 groups=16):
-        super(RevolutionNaive0, self).__init__()
+                 group_channels=16):
+        super(RevolutionNaive, self).__init__()
         self.kernel_size = kernel_size
         self.stride = stride
         self.ratio = ratio
         self.new_size = int(ratio * stride)
         self.channels = channels
-        self.group_channels = groups
+        self.group_channels = group_channels
         self.groups = self.channels // self.group_channels
 
         self.unfold = torch.nn.Unfold(
@@ -62,20 +62,20 @@ class RevolutionNaive0(nn.Module):
         weight = self.conv2(self.conv1(weight))
         weight = weight.view(batch_size, self.groups, 1,
                              self.kernel_size * self.kernel_size,
-                             self.new_size, self.new_size,
-                             weight.shape[2], weight.shape[3])
+                             self.new_size * self.new_size,
+                             x.shape[-2], x.shape[-1])
 
-        # mask = weight.view(batch_size, self.channels, -1,
-        #                    weight.shape[-2], weight.shape[-1])
-        # mask = torch.sum(mask, dim=2).unsqueeze(2).unsqueeze(2).unsqueeze(2)
-        # mask = torch.sigmoid(mask)
-        # weight = nn.functional.softmax(weight, dim=2) * mask
         weight = nn.functional.softmax(weight, dim=3)
+        # weight = nn.functional.softmax(weight, dim=4)
 
-        x = x.view(x.shape[0], x.shape[1], x.shape[2], -1,
-                   x.shape[-2], x.shape[-1]).unsqueeze(-3).unsqueeze(-3)
+        x = x.view(batch_size, self.groups, self.group_channels,
+                   self.kernel_size * self.kernel_size, 1,
+                   x.shape[-2], x.shape[-1])
         x = x * weight
-        x = torch.mean(x, dim=3).view(x.shape[0], -1, x.shape[4], x.shape[5], x.shape[6], x.shape[7])
+
+        x = torch.mean(x, dim=3).view(x.shape[0], self.channels,
+                                      self.new_size, self.new_size,
+                                      x.shape[-2], x.shape[-1])
 
         x = x.permute(0, 1, 4, 2, 5, 3)
         x = x.reshape(
@@ -93,7 +93,7 @@ class RevolutionNaive0(nn.Module):
                 constant_init(m, 1)
 
 
-class RevolutionNaive(nn.Module):
+class RevolutionNaive1(nn.Module):
     def __init__(self,
                  channels,
                  kernel_size,
@@ -101,7 +101,7 @@ class RevolutionNaive(nn.Module):
                  ratio,
                  padding,
                  groups=16):
-        super(RevolutionNaive, self).__init__()
+        super(RevolutionNaive1, self).__init__()
         self.kernel_size = kernel_size
         self.stride = stride
         self.ratio = ratio
@@ -141,14 +141,14 @@ class RevolutionNaive(nn.Module):
             norm_cfg=None,
             act_cfg=None)
 
-        self.conv4 = ConvModule(
-            in_channels=self.channels,
-            out_channels=self.channels,
-            kernel_size=3,
-            stride=1,
-            conv_cfg=None,
-            norm_cfg=dict(type='BN'),
-            act_cfg=dict(type='ReLU'))
+        # self.conv4 = ConvModule(
+        #     in_channels=self.channels,
+        #     out_channels=self.channels,
+        #     kernel_size=3,
+        #     stride=1,
+        #     conv_cfg=None,
+        #     norm_cfg=dict(type='BN'),
+        #     act_cfg=dict(type='ReLU'))
 
         self.init()
 
@@ -161,8 +161,8 @@ class RevolutionNaive(nn.Module):
                    int((height + 2 * self.padding - self.kernel_size + 1) / self.stride))
 
         x1 = torch.max(x.view(batch_size, self.groups, 4, self.group_channels // 4, self.kernel_size, self.kernel_size,
-                       int((width + 2 * self.padding - self.kernel_size + 1) / self.stride),
-                       int((height + 2 * self.padding - self.kernel_size + 1) / self.stride))
+                              int((width + 2 * self.padding - self.kernel_size + 1) / self.stride),
+                              int((height + 2 * self.padding - self.kernel_size + 1) / self.stride))
                        , dim=2, keepdim=True)
         x1 = x1.values.view(batch_size, -1, x.shape[-2], x.shape[-1])
         x2 = torch.max(x, dim=3, keepdim=True)
@@ -176,10 +176,10 @@ class RevolutionNaive(nn.Module):
                                          self.kernel_size, 1,
                                          self.new_size, 1,
                                          weight.shape[-2], weight.shape[-1]) * \
-            self.conv3(weight).view(batch_size, self.groups, 1,
-                                    1, self.kernel_size,
-                                    1, self.new_size,
-                                    weight.shape[-2], weight.shape[-1])
+                 self.conv3(weight).view(batch_size, self.groups, 1,
+                                         1, self.kernel_size,
+                                         1, self.new_size,
+                                         weight.shape[-2], weight.shape[-1])
         weight = weight.view(batch_size, self.groups, 1,
                              self.kernel_size * self.kernel_size,
                              self.new_size, self.new_size,
@@ -201,7 +201,7 @@ class RevolutionNaive(nn.Module):
             batch_size, self.channels,
             x.shape[2] * x.shape[3],
             x.shape[4] * x.shape[5])
-        x = self.conv4(x)
+        # x = self.conv4(x)
 
         return x
 
