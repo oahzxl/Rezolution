@@ -12,7 +12,8 @@ class RevolutionNaive(nn.Module):
                  kernel_size,
                  stride,
                  ratio,
-                 group_channels=16):
+                 group_channels=16,
+                 padding=None):
         super(RevolutionNaive, self).__init__()
         self.kernel_size = kernel_size
         self.stride = stride
@@ -22,8 +23,15 @@ class RevolutionNaive(nn.Module):
         self.group_channels = group_channels
         self.groups = self.channels // self.group_channels
 
-        self.unfold = torch.nn.Unfold(
-            kernel_size, 1, (kernel_size - 1) // 2, stride)
+        if padding:
+            self.padding = padding
+            self.unfold = torch.nn.Unfold(
+                kernel_size, 1, padding, stride)
+        else:
+            self.padding = (kernel_size - 1) // 2
+            self.unfold = torch.nn.Unfold(
+                kernel_size, 1, (kernel_size - 1) // 2, stride)
+
         self.conv1 = ConvModule(
             in_channels=self.groups * (kernel_size * self.group_channels * 2 + kernel_size * kernel_size),
             out_channels=self.groups * self.new_size * self.new_size * kernel_size * kernel_size // 10,
@@ -44,12 +52,13 @@ class RevolutionNaive(nn.Module):
 
         self.init()
 
-    def forward(self, x, target=None):
+    def forward(self, x):
         batch_size, channels, width, height = x.shape
 
         x = self.unfold(x)
         x = x.view(batch_size, self.groups, self.group_channels, self.kernel_size, self.kernel_size,
-                   math.ceil(width / self.stride), -1)
+                   math.ceil((width + 2 * self.padding - self.kernel_size + 1) / self.stride),
+                   math.ceil((height + 2 * self.padding - self.kernel_size + 1) / self.stride))
 
         x1 = torch.max(x, dim=2, keepdim=True)
         x1 = x1.values.view(batch_size, -1, x.shape[-2], x.shape[-1])
@@ -66,7 +75,6 @@ class RevolutionNaive(nn.Module):
                              x.shape[-2], x.shape[-1])
 
         weight = nn.functional.softmax(weight, dim=3)
-        # weight = nn.functional.softmax(weight, dim=4)
 
         x = x.view(batch_size, self.groups, self.group_channels,
                    self.kernel_size * self.kernel_size, 1,
@@ -140,15 +148,6 @@ class RevolutionNaive1(nn.Module):
             conv_cfg=None,
             norm_cfg=None,
             act_cfg=None)
-
-        # self.conv4 = ConvModule(
-        #     in_channels=self.channels,
-        #     out_channels=self.channels,
-        #     kernel_size=3,
-        #     stride=1,
-        #     conv_cfg=None,
-        #     norm_cfg=dict(type='BN'),
-        #     act_cfg=dict(type='ReLU'))
 
         self.init()
 
