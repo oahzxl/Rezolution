@@ -50,6 +50,16 @@ class RevolutionNaive(nn.Module):
             norm_cfg=None,
             act_cfg=None)
 
+        # self.conv3 = ConvModule(
+        #     in_channels=self.channels,
+        #     out_channels=self.channels,
+        #     kernel_size=3,
+        #     stride=1,
+        #     padding=1,
+        #     conv_cfg=None,
+        #     norm_cfg=dict(type='BN'),
+        #     act_cfg=dict(type='ReLU'))
+
         self.init()
 
     def forward(self, x):
@@ -90,6 +100,8 @@ class RevolutionNaive(nn.Module):
             batch_size, self.channels,
             x.shape[2] * x.shape[3],
             x.shape[4] * x.shape[5])
+
+        # x = self.conv3(x)
 
         return x
 
