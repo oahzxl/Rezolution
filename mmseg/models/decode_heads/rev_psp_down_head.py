@@ -67,10 +67,10 @@ class PPM(nn.Module):
 
         ppm_outs = []
         for n, ppm in enumerate(self.ppm):
-            if x.size()[2:] != (64, 64):
-                ppm_out = ppm(self.pool(x))
-            else:
-                ppm_out = ppm(x)
+            # if x.size()[2:] != (64, 64):
+            #     ppm_out = ppm(self.pool(x))
+            # else:
+            ppm_out = ppm(x)
             upsampled_ppm_out = resize(
                 ppm_out,
                 size=x.size()[2:],
