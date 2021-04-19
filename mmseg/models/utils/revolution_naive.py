@@ -81,9 +81,9 @@ class RevolutionNaive(nn.Module):
                    x.shape[-2], x.shape[-1])
         x = x * weight
 
-        x = torch.mean(x, dim=3).view(x.shape[0], self.channels,
-                                      self.new_size, self.new_size,
-                                      x.shape[-2], x.shape[-1])
+        x = torch.sum(x, dim=3).view(x.shape[0], self.channels,
+                                     self.new_size, self.new_size,
+                                     x.shape[-2], x.shape[-1])
 
         x = x.permute(0, 1, 4, 2, 5, 3)
         x = x.reshape(

@@ -7,4 +7,6 @@ optimizer = dict(type='SGD', lr=0.005, momentum=0.9, weight_decay=0.0005)
 data = dict(
     samples_per_gpu=3,
     workers_per_gpu=3,)
-model = dict(decode_head=dict(num_classes=21))
+model = dict(
+    decode_head=dict(num_classes=21), auxiliary_head=dict(num_classes=21))
+# prp

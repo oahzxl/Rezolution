@@ -57,20 +57,20 @@ class PPM(nn.Module):
                         conv_cfg=self.conv_cfg,
                         norm_cfg=self.norm_cfg,
                         act_cfg=self.act_cfg),
-                    # nn.AdaptiveAvgPool2d(pool_scale),
+                    nn.AdaptiveAvgPool2d(pool_scale),
                     ))
 
-        # self.pool = nn.AdaptiveAvgPool2d(64)
+        self.pool = nn.AdaptiveAvgPool2d(64)
 
     def forward(self, x):
         """Forward function."""
 
         ppm_outs = []
         for n, ppm in enumerate(self.ppm):
-            # if x.size()[2:] != (64, 64):
-            #     ppm_out = ppm(self.pool(x))
-            # else:
-            ppm_out = ppm(x)
+            if x.size()[2:] != (64, 64):
+                ppm_out = ppm(self.pool(x))
+            else:
+                ppm_out = ppm(x)
             upsampled_ppm_out = resize(
                 ppm_out,
                 size=x.size()[2:],
