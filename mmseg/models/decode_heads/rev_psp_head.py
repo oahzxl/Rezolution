@@ -47,21 +47,21 @@ class PPM(nn.Module):
                         act_cfg=self.act_cfg),
                     ))
 
-        # self.revolution = nn.ModuleList([RevolutionNaive(
-        #                 channels=channels,
-        #                 kernel_size={1: 1, 2: 2, 3: 2, 6: 3}[pool_scale],
-        #                 stride={1: 1, 2: 1, 3: 1, 6: 1}[pool_scale],
-        #                 padding={1: 0, 2: 0, 3: 1, 6: 2}[pool_scale],
-        #                 ratio={1: 64, 2: 64, 3: 16, 6: 8}[pool_scale],
-        #                 groups=channels // 4
-        #             ) for pool_scale in pool_scales])
-
+        # small kernel
         self.revolution = nn.ModuleList([RevolutionNaive(
             channels=channels,
-            kernel_size={1: 1, 2: 3, 3: 3, 6: 5}[pool_scale],
+            kernel_size={1: 1, 2: 2, 3: 2, 6: 4}[pool_scale],
             stride=1,
             ratio={1: 32, 2: 16, 3: 11, 6: 6}[pool_scale],
-            group_channels=channels // 4) for pool_scale in pool_scales])
+            group_channels=channels // 8) for pool_scale in pool_scales])
+
+        # origin
+        # self.revolution = nn.ModuleList([RevolutionNaive(
+        #     channels=channels,
+        #     kernel_size={1: 1, 2: 3, 3: 3, 6: 5}[pool_scale],
+        #     stride=1,
+        #     ratio={1: 32, 2: 16, 3: 11, 6: 6}[pool_scale],
+        #     group_channels=channels // 4) for pool_scale in pool_scales])
 
     def forward(self, x):
         """Forward function."""
@@ -112,14 +112,10 @@ class RevPSPHead(BaseDecodeHead):
             conv_cfg=self.conv_cfg,
             norm_cfg=self.norm_cfg,
             act_cfg=self.act_cfg)
-        self.pool = nn.AdaptiveAvgPool2d((64, 64))
 
     def forward(self, inputs):
         """Forward function."""
         x = self._transform_inputs(inputs)
-        # if x.shape[2:] != (64, 64):
-        #     print(x.shape)
-        # x = self.pool(x)
         psp_outs = [x]
         psp_outs.extend(self.psp_modules(x))
         psp_outs = torch.cat(psp_outs, dim=1)

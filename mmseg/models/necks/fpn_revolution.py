@@ -186,7 +186,9 @@ class FPNRevolution(nn.Module):
             # a = self.revolutions[i - 1](laterals[i])
             # if laterals[i - 1].size(2) != a.size(2) or laterals[i - 1].size(3) != a.size(3):
             #     print(1)
-            laterals[i - 1] += self.revolutions[i - 1](laterals[i], laterals[i - 1].shape)
+            prev_shape = laterals[i - 1].shape[2:]
+            laterals[i - 1] += F.interpolate(
+                self.revolutions[i - 1](laterals[i]), size=prev_shape, **self.upsample_cfg)
 
         # build outputs
         # part 1: from original levels

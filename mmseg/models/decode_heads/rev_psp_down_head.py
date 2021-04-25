@@ -44,12 +44,37 @@ class PPM(nn.Module):
                         conv_cfg=self.conv_cfg,
                         norm_cfg=self.norm_cfg,
                         act_cfg=self.act_cfg),
+
+                    # origin
+                    # RevolutionNaive(
+                    #     channels=self.channels,
+                    #     kernel_size={1: 38, 2: 19, 3: 12, 6: 8}[pool_scale],
+                    #     stride={1: 32, 2: 16, 3: 10, 6: 6}[pool_scale],
+                    #     ratio={1: 1.0 / 32, 2: 1.0 / 16, 3: 1.0 / 10, 6: 1.0 / 6}[pool_scale],
+                    #     group_channels=channels // 4),
+                    
+                    # 1rev
                     RevolutionNaive(
                         channels=self.channels,
-                        kernel_size={1: 38, 2: 19, 3: 12, 6: 8}[pool_scale],
-                        stride={1: 32, 2: 16, 3: 10, 6: 6}[pool_scale],
-                        ratio={1: 1.0/32, 2: 1.0/16, 3: 1.0/10, 6: 1.0/6}[pool_scale],
-                        group_channels=channels // 4),
+                        kernel_size={1: 20, 2: 10, 3: 7, 6: 4}[pool_scale],
+                        stride={1: 16, 2: 8, 3: 5, 6: 3}[pool_scale],
+                        ratio={1: 1.0/16, 2: 1.0/8, 3: 1.0/5, 6: 1.0/3}[pool_scale],
+                        group_channels=channels // 16),
+
+                    # 2rev
+                    # RevolutionNaive(
+                    #     channels=self.channels,
+                    #     kernel_size={1: 12, 2: 8, 3: 6, 6: 3}[pool_scale],
+                    #     stride={1: 8, 2: 6, 3: 4, 6: 2}[pool_scale],
+                    #     ratio={1: 1.0 / 8, 2: 1.0 / 6, 3: 1.0 / 4, 6: 1.0 / 2}[pool_scale],
+                    #     group_channels=channels // 16),
+                    # RevolutionNaive(
+                    #     channels=self.channels,
+                    #     kernel_size={1: 12, 2: 8, 3: 6, 6: 3}[pool_scale],
+                    #     stride={1: 8, 2: 6, 3: 4, 6: 2}[pool_scale],
+                    #     ratio={1: 1.0 / 8, 2: 1.0 / 6, 3: 1.0 / 4, 6: 1.0 / 2}[pool_scale],
+                    #     group_channels=channels // 16),
+
                     ConvModule(
                         self.channels,
                         self.channels,
@@ -60,16 +85,11 @@ class PPM(nn.Module):
                     nn.AdaptiveAvgPool2d(pool_scale),
                     ))
 
-        self.pool = nn.AdaptiveAvgPool2d(64)
-
     def forward(self, x):
         """Forward function."""
 
         ppm_outs = []
         for n, ppm in enumerate(self.ppm):
-            # if x.size()[2:] != (64, 64):
-            #     ppm_out = ppm(self.pool(x))
-            # else:
             ppm_out = ppm(x)
             upsampled_ppm_out = resize(
                 ppm_out,
