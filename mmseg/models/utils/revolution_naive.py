@@ -2,18 +2,119 @@ import torch
 import torch.nn as nn
 from mmcv.cnn import ConvModule
 import math
+from mmseg.ops import resize
 from mmcv.utils.parrots_wrapper import _BatchNorm
 from mmcv.cnn import constant_init, kaiming_init
 
 
+class AlignCM(nn.Module):
+    def __init__(self, channels):
+        super(AlignCM, self).__init__()
+        self.conv1 = ConvModule(
+            in_channels=channels * 2,
+            out_channels=channels // 2,
+            kernel_size=1,
+            padding=0,
+            stride=1,
+            norm_cfg=dict(type='BN'),
+            act_cfg=dict(type='ReLU'))
+        self.conv2 = ConvModule(
+            in_channels=channels // 2,
+            out_channels=2,
+            kernel_size=3,
+            stride=1,
+            padding=1,
+            act_cfg=None)
+
+        self.conv_t = ConvModule(
+            in_channels=channels,
+            out_channels=channels // 2,
+            kernel_size=3,
+            padding=1,
+            stride=1,
+            norm_cfg=dict(type='BN'),
+            act_cfg=dict(type='ReLU'))
+        self.conv_x = ConvModule(
+            in_channels=channels,
+            out_channels=channels // 2,
+            kernel_size=1,
+            padding=0,
+            stride=1,
+            norm_cfg=dict(type='BN'),
+            act_cfg=dict(type='ReLU'))
+
+    def forward(self, x, origin_x):
+        x = self.conv_x(x)
+        origin_x = self.conv_t(origin_x)
+
+        target_x = resize(origin_x, size=x.size()[2:], mode='bilinear', align_corners=False)
+        weight = torch.cat((x, target_x), dim=1)
+        weight = self.conv2(self.conv1(weight)).permute(0, 2, 3, 1)
+
+        x = nn.functional.grid_sample(x, weight, mode='bilinear', align_corners=False)
+
+        return torch.cat((x, origin_x), dim=1)
+
+
+class AlignFA(nn.Module):
+    def __init__(self, channels):
+        super(AlignFA, self).__init__()
+        self.conv1 = ConvModule(
+            in_channels=channels * 2,
+            out_channels=channels // 2,
+            kernel_size=1,
+            padding=0,
+            stride=1,
+            norm_cfg=dict(type='BN'),
+            act_cfg=dict(type='ReLU'))
+        self.conv2 = ConvModule(
+            in_channels=channels // 2,
+            out_channels=4,
+            kernel_size=3,
+            stride=1,
+            padding=1,
+            act_cfg=None)
+
+    def forward(self, x, origin_x):
+        target_x = resize(origin_x, size=x.size()[2:], mode='bilinear', align_corners=False)
+        weight = torch.cat((x, target_x), dim=1)
+        weight = torch.tanh(self.conv2(self.conv1(weight)).permute(0, 2, 3, 1))
+        x = nn.functional.grid_sample(x, weight[:, :, :, :2], mode='bilinear', align_corners=True)
+        target_x = nn.functional.grid_sample(target_x, weight[:, :, :, 2:], mode='bilinear', align_corners=True)
+
+        return (x + target_x) / 2
+
+
+class Position(nn.Module):
+    def __init__(self, channels, norm_cfg, act_cfg):
+        super(Position, self).__init__()
+        self.conv1 = ConvModule(
+            in_channels=channels * 2,
+            out_channels=channels,
+            kernel_size=1,
+            padding=0,
+            stride=1,
+            norm_cfg=norm_cfg,
+            act_cfg=act_cfg)
+        self.conv2 = ConvModule(
+            in_channels=channels,
+            out_channels=channels,
+            kernel_size=3,
+            padding=1,
+            stride=1,
+            norm_cfg=norm_cfg,
+            act_cfg=act_cfg)
+
+    def forward(self, inputs, origin):
+        origin = resize(origin, size=inputs.size()[2:], mode='bilinear', align_corners=False)
+        x = torch.cat((inputs, origin), dim=1)
+        x = self.conv2(self.conv1(x))
+        return x
+
+
 class RevolutionNaive(nn.Module):
-    def __init__(self,
-                 channels,
-                 kernel_size,
-                 stride,
-                 ratio,
-                 group_channels=16,
-                 padding=None):
+    def __init__(self, channels, kernel_size, stride, ratio, group_channels=16,
+                 padding=None, norm_cfg=None, act_cfg=None):
         super(RevolutionNaive, self).__init__()
         self.kernel_size = kernel_size
         self.stride = stride
@@ -25,99 +126,87 @@ class RevolutionNaive(nn.Module):
 
         if padding:
             self.padding = padding
-            self.unfold = torch.nn.Unfold(
-                kernel_size, 1, padding, stride)
         else:
             self.padding = (kernel_size - 1) // 2
-            self.unfold = torch.nn.Unfold(
-                kernel_size, 1, (kernel_size - 1) // 2, stride)
+        self.unfold = torch.nn.Unfold(kernel_size, 1, self.padding, stride)
 
         self.conv1 = ConvModule(
-            # in_channels=self.groups * (kernel_size * self.group_channels * 2 + kernel_size * kernel_size),
-            in_channels=self.channels * (kernel_size * kernel_size),
+            in_channels=(self.groups * kernel_size * self.group_channels * 2 +
+                         self.group_channels * kernel_size * kernel_size) * 1,
             out_channels=self.groups * self.new_size * self.new_size * kernel_size * kernel_size // 8,
-            # out_channels=self.new_size * self.new_size * kernel_size * kernel_size,
-            kernel_size=1,
-            padding=0,
+            kernel_size=3,
+            padding=1,
             stride=1,
-            conv_cfg=None,
-            norm_cfg=dict(type='BN'),
-            act_cfg=dict(type='ReLU'))
+            norm_cfg=norm_cfg,
+            act_cfg=act_cfg)
         self.conv2 = ConvModule(
             in_channels=self.groups * self.new_size * self.new_size * kernel_size * kernel_size // 8,
-            # in_channels=self.new_size * self.new_size * kernel_size * kernel_size,
             out_channels=self.groups * self.new_size * self.new_size * kernel_size * kernel_size,
             kernel_size=1,
             stride=1,
-            conv_cfg=None,
-            norm_cfg=None,
             act_cfg=None)
 
-        self.conv3 = ConvModule(
-            # in_channels=self.groups * (kernel_size * self.group_channels * 2 + kernel_size * kernel_size),
-            in_channels=self.channels * (kernel_size * kernel_size),
-            out_channels=self.channels // 8,
-            kernel_size=1,
-            padding=0,
-            stride=1,
-            conv_cfg=None,
-            norm_cfg=dict(type='BN'),
-            act_cfg=dict(type='ReLU'))
-        self.conv4 = ConvModule(
-            in_channels=self.channels // 8,
-            out_channels=self.channels,
-            kernel_size=1,
-            stride=1,
-            conv_cfg=None,
-            norm_cfg=None,
-            act_cfg=None)
+        # self.conv3 = ConvModule(
+        #     # in_channels=self.groups * (kernel_size * self.group_channels * 2 + kernel_size * kernel_size),
+        #     in_channels=self.channels * (kernel_size * kernel_size),
+        #     out_channels=self.channels // 8,
+        #     kernel_size=1,
+        #     padding=0,
+        #     stride=1,
+        #     conv_cfg=None,
+        #     norm_cfg=dict(type='BN'),
+        #     act_cfg=dict(type='ReLU'))
+        # self.conv4 = ConvModule(
+        #     in_channels=self.channels // 8,
+        #     out_channels=self.channels,
+        #     kernel_size=1,
+        #     stride=1,
+        #     act_cfg=None)
 
+        # self.pos = Position(self.channels, norm_cfg, act_cfg)
+        # self.alignfa = AlignFA(self.channels)
         self.init()
 
-    def forward(self, x):
-        batch_size, channels, width, height = x.shape
+    def forward(self, inputs):
+        batch_size, channels, width, height = inputs.shape
+        h = math.ceil((width + 2 * self.padding - self.kernel_size + 1) / self.stride)
+        w = math.ceil((height + 2 * self.padding - self.kernel_size + 1) / self.stride)
 
-        x = self.unfold(x)
-        x = x.view(batch_size, self.groups, self.group_channels, self.kernel_size, self.kernel_size,
-                   math.ceil((width + 2 * self.padding - self.kernel_size + 1) / self.stride),
-                   math.ceil((height + 2 * self.padding - self.kernel_size + 1) / self.stride))
+        x = self.unfold(inputs).view(
+            batch_size, self.groups, self.group_channels, self.kernel_size, self.kernel_size, h, w)
 
         # max
-        # x1 = torch.max(x, dim=2, keepdim=True)
-        # x1 = x1.values.view(batch_size, -1, x.shape[-2], x.shape[-1])
-        # x2 = torch.max(x, dim=3, keepdim=True)
-        # x2 = x2.values.view(batch_size, -1, x.shape[-2], x.shape[-1])
-        # x3 = torch.max(x, dim=4, keepdim=True)
-        # x3 = x3.values.view(batch_size, -1, x.shape[-2], x.shape[-1])
-        # weight = torch.cat((x1, x2, x3), dim=1)
-
-        # cat
-        weight = x.view(batch_size, self.groups * self.group_channels * self.kernel_size * self.kernel_size,
-                        math.ceil((width + 2 * self.padding - self.kernel_size + 1) / self.stride),
-                        math.ceil((height + 2 * self.padding - self.kernel_size + 1) / self.stride))
+        x1 = torch.max(x, dim=1).values.view(batch_size, -1, h, w)
+        x2 = torch.max(x, dim=3).values.view(batch_size, -1, h, w)
+        x3 = torch.max(x, dim=4).values.view(batch_size, -1, h, w)
+        # x4 = torch.mean(x, dim=1, keepdim=True).view(batch_size, -1, x.shape[-2], x.shape[-1])
+        # x5 = torch.mean(x, dim=3, keepdim=True).view(batch_size, -1, x.shape[-2], x.shape[-1])
+        # x6 = torch.mean(x, dim=4, keepdim=True).view(batch_size, -1, x.shape[-2], x.shape[-1])
+        weight = torch.cat((x1, x2, x3), dim=1)
 
         # channel weight
-        weight_channel = self.conv4(self.conv3(weight))
-        weight_channel = weight_channel.view(batch_size, self.groups, self.group_channels,
-                                             1, 1, x.shape[-2], x.shape[-1])
-        weight_channel = torch.sigmoid(weight_channel)
-        x = x * weight_channel
+        # weight_channel = self.conv4(self.conv3(weight))
+        # weight_channel = weight_channel.view(batch_size, self.groups, self.group_channels,
+        #                                      self.kernel_size * self.kernel_size, 1, x.shape[-2], x.shape[-1])
+        # weight_channel = torch.sigmoid(weight_channel) * 2
 
         weight = self.conv2(self.conv1(weight))
-        weight = weight.view(batch_size, self.groups, 1,
-                             self.kernel_size * self.kernel_size,
-                             self.new_size * self.new_size, x.shape[-2], x.shape[-1])
+        weight = weight.view(batch_size, self.groups, 1, self.kernel_size * self.kernel_size,
+                             self.new_size * self.new_size, h, w)
         weight = nn.functional.softmax(weight, dim=3)
 
-        x = x.view(batch_size, self.groups, self.group_channels,
-                   self.kernel_size * self.kernel_size, 1, x.shape[-2], x.shape[-1])
+        x = x.view(batch_size, self.groups, self.group_channels, self.kernel_size * self.kernel_size, 1, h, w)
+        # x = x * weight_channel
         x = x * weight
 
-        x = torch.sum(x, dim=3).view(x.shape[0], self.channels, self.new_size, self.new_size, x.shape[-2], x.shape[-1])
+        x = torch.sum(x, dim=3).view(batch_size, self.channels * self.new_size * self.new_size, h * w)
+        # x = torch.mean(x, dim=3).view(batch_size, self.channels * self.new_size * self.new_size, h * w)
 
-        x = x.permute(0, 1, 4, 2, 5, 3)
-        x = x.reshape(batch_size, self.channels, x.shape[2] * x.shape[3], x.shape[4] * x.shape[5])
+        x = nn.functional.fold(x, (self.new_size * h, self.new_size * w),
+                               (self.new_size, self.new_size), stride=(self.new_size, self.new_size))
 
+        # x = self.alignfa(x, inputs)
+        # x = self.pos(x, inputs)
         return x
 
     def init(self):
