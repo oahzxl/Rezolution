@@ -131,16 +131,16 @@ class RevolutionNaive(nn.Module):
         self.unfold = torch.nn.Unfold(kernel_size, 1, self.padding, stride)
 
         self.conv1 = ConvModule(
-            in_channels=(self.groups * kernel_size * self.group_channels * 2 +
-                         self.group_channels * kernel_size * kernel_size) * 1,
-            out_channels=self.groups * self.new_size * self.new_size * kernel_size * kernel_size // 8,
-            kernel_size=3,
-            padding=1,
+            in_channels=(self.channels * kernel_size * 2 +
+                         self.channels * kernel_size * kernel_size // 32) * 1,
+            out_channels=self.groups * self.new_size * self.new_size * kernel_size * kernel_size // 4,
+            kernel_size=1,
+            padding=0,
             stride=1,
             norm_cfg=norm_cfg,
             act_cfg=act_cfg)
         self.conv2 = ConvModule(
-            in_channels=self.groups * self.new_size * self.new_size * kernel_size * kernel_size // 8,
+            in_channels=self.groups * self.new_size * self.new_size * kernel_size * kernel_size // 4,
             out_channels=self.groups * self.new_size * self.new_size * kernel_size * kernel_size,
             kernel_size=1,
             stride=1,
@@ -176,7 +176,8 @@ class RevolutionNaive(nn.Module):
             batch_size, self.groups, self.group_channels, self.kernel_size, self.kernel_size, h, w)
 
         # max
-        x1 = torch.max(x, dim=1).values.view(batch_size, -1, h, w)
+        x1 = torch.max(x.view(batch_size, self.groups, -1, self.group_channels // 32, self.kernel_size,
+                              self.kernel_size, h, w), dim=2).values.view(batch_size, -1, h, w)
         x2 = torch.max(x, dim=3).values.view(batch_size, -1, h, w)
         x3 = torch.max(x, dim=4).values.view(batch_size, -1, h, w)
         # x4 = torch.mean(x, dim=1, keepdim=True).view(batch_size, -1, x.shape[-2], x.shape[-1])
