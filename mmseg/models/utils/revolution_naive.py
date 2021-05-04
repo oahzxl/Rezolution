@@ -11,7 +11,7 @@ class AlignCM(nn.Module):
     def __init__(self, channels):
         super(AlignCM, self).__init__()
         self.conv1 = ConvModule(
-            in_channels=channels * 2,
+            in_channels=channels,
             out_channels=channels // 2,
             kernel_size=1,
             padding=0,
@@ -50,10 +50,16 @@ class AlignCM(nn.Module):
         target_x = resize(origin_x, size=x.size()[2:], mode='bilinear', align_corners=False)
         weight = torch.cat((x, target_x), dim=1)
         weight = self.conv2(self.conv1(weight)).permute(0, 2, 3, 1)
+        weight = torch.tanh(weight)
+
+        w_bias = torch.linspace(start=-1, end=-1, steps=x.size(-2)).cuda().unsqueeze(1).repeat(1, x.size(-1)).unsqueeze(0).unsqueeze(-1)
+        h_bias = torch.linspace(start=-1, end=-1, steps=x.size(-1)).cuda().unsqueeze(0).repeat(x.size(-2), 1).unsqueeze(0).unsqueeze(-1)
+        bias = torch.cat((w_bias, h_bias), dim=-1)
+        weight = weight + bias
 
         x = nn.functional.grid_sample(x, weight, mode='bilinear', align_corners=False)
 
-        return torch.cat((x, origin_x), dim=1)
+        return torch.cat((x, target_x), dim=1)
 
 
 class AlignFA(nn.Module):
@@ -79,6 +85,12 @@ class AlignFA(nn.Module):
         target_x = resize(origin_x, size=x.size()[2:], mode='bilinear', align_corners=False)
         weight = torch.cat((x, target_x), dim=1)
         weight = torch.tanh(self.conv2(self.conv1(weight)).permute(0, 2, 3, 1))
+
+        w_bias = torch.linspace(start=-1, end=-1, steps=x.size(-2)).cuda().unsqueeze(1).repeat(1, x.size(-1)).unsqueeze(0).unsqueeze(-1)
+        h_bias = torch.linspace(start=-1, end=-1, steps=x.size(-1)).cuda().unsqueeze(0).repeat(x.size(-2), 1).unsqueeze(0).unsqueeze(-1)
+        bias = torch.cat((w_bias, h_bias, w_bias, h_bias), dim=-1)
+        weight = weight + bias
+
         x = nn.functional.grid_sample(x, weight[:, :, :, :2], mode='bilinear', align_corners=True)
         target_x = nn.functional.grid_sample(target_x, weight[:, :, :, 2:], mode='bilinear', align_corners=True)
 
@@ -164,14 +176,12 @@ class RevolutionNaive(nn.Module):
         #     act_cfg=None)
 
         # self.pos = Position(self.channels, norm_cfg, act_cfg)
-        # self.alignfa = AlignFA(self.channels)
         self.init()
 
     def forward(self, inputs):
         batch_size, channels, width, height = inputs.shape
         h = math.ceil((width + 2 * self.padding - self.kernel_size + 1) / self.stride)
         w = math.ceil((height + 2 * self.padding - self.kernel_size + 1) / self.stride)
-
         x = self.unfold(inputs).view(
             batch_size, self.groups, self.group_channels, self.kernel_size, self.kernel_size, h, w)
 
@@ -201,12 +211,9 @@ class RevolutionNaive(nn.Module):
         x = x * weight
 
         x = torch.sum(x, dim=3).view(batch_size, self.channels * self.new_size * self.new_size, h * w)
-        # x = torch.mean(x, dim=3).view(batch_size, self.channels * self.new_size * self.new_size, h * w)
-
         x = nn.functional.fold(x, (self.new_size * h, self.new_size * w),
                                (self.new_size, self.new_size), stride=(self.new_size, self.new_size))
 
-        # x = self.alignfa(x, inputs)
         # x = self.pos(x, inputs)
         return x
 
