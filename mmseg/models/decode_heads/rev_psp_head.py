@@ -58,14 +58,14 @@ class PPM(nn.Module):
             group_channels=channels // 8,
             norm_cfg=self.norm_cfg, act_cfg=self.act_cfg) for pool_scale in pool_scales],
         )
-        self.revolution1 = nn.ModuleList([RevolutionNaive(
-            channels=channels,
-            kernel_size=3,
-            stride=1,
-            ratio=1,
-            group_channels=channels // 8,
-            norm_cfg=self.norm_cfg, act_cfg=self.act_cfg) for pool_scale in pool_scales],
-        )
+        # self.revolution1 = nn.ModuleList([RevolutionNaive(
+        #     channels=channels,
+        #     kernel_size=3,
+        #     stride=1,
+        #     ratio=1,
+        #     group_channels=channels // 8,
+        #     norm_cfg=self.norm_cfg, act_cfg=self.act_cfg) for pool_scale in pool_scales],
+        # )
 
     def forward(self, x):
         """Forward function."""
@@ -78,7 +78,7 @@ class PPM(nn.Module):
                 size=(x.size(-2) // 2, x.size(-1) // 2),
                 mode='bilinear',
                 align_corners=self.align_corners)
-            ppm_out = self.revolution1[n](ppm_out) + ppm_out
+            # ppm_out = self.revolution1[n](ppm_out) + ppm_out
             upsampled_ppm_out = self.revolution[n](ppm_out)
             if upsampled_ppm_out.shape[2:] != x.shape[2:]:
                 upsampled_ppm_out = resize(
