@@ -48,7 +48,7 @@ class PPM(nn.Module):
                     ))
 
         # small kernel
-        self.revolution = nn.ModuleList([RevolutionNaive(
+        self.revolution = RevolutionNaive(
             channels=channels,
             # kernel_size=5,
             # stride=2,
@@ -56,8 +56,7 @@ class PPM(nn.Module):
             stride=1,
             ratio=2,
             group_channels=channels // 8,
-            norm_cfg=self.norm_cfg, act_cfg=self.act_cfg) for pool_scale in pool_scales],
-        )
+            norm_cfg=self.norm_cfg, act_cfg=self.act_cfg)
         # self.revolution1 = nn.ModuleList([RevolutionNaive(
         #     channels=channels,
         #     kernel_size=3,
@@ -79,7 +78,7 @@ class PPM(nn.Module):
                 mode='bilinear',
                 align_corners=self.align_corners)
             # ppm_out = self.revolution1[n](ppm_out) + ppm_out
-            upsampled_ppm_out = self.revolution[n](ppm_out)
+            upsampled_ppm_out = self.revolution(ppm_out)
             if upsampled_ppm_out.shape[2:] != x.shape[2:]:
                 upsampled_ppm_out = resize(
                     upsampled_ppm_out,

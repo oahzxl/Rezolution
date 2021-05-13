@@ -9,3 +9,5 @@ data = dict(
     workers_per_gpu=4,)
 model = dict(
     decode_head=dict(num_classes=21), auxiliary_head=dict(num_classes=21))
+
+# 还是原来的max方法获得卷积核，在psp里用了两个rev，第二个rev的卷积核设成了5、步长为2

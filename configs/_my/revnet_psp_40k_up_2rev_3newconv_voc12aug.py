@@ -9,3 +9,4 @@ data = dict(
     workers_per_gpu=4,)
 model = dict(
     decode_head=dict(num_classes=21), auxiliary_head=dict(num_classes=21))
+# 2rev+新卷积
