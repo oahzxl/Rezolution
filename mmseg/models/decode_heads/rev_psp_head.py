@@ -55,7 +55,7 @@ class PPM(nn.Module):
             kernel_size=3,
             stride=1,
             ratio=2,
-            group_channels=channels // 8,
+            group_channels=16,
             norm_cfg=self.norm_cfg, act_cfg=self.act_cfg)
         # self.revolution1 = nn.ModuleList([RevolutionNaive(
         #     channels=channels,

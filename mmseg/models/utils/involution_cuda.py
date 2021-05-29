@@ -179,6 +179,8 @@ class _involution(Function):
     
     @staticmethod
     def backward(ctx, grad_output):
+        if not grad_output.is_contiguous():
+            grad_output = grad_output.contiguous()
         assert grad_output.is_cuda and grad_output.is_contiguous()
         input, weight = ctx.saved_tensors
         stride, padding, dilation = ctx.stride, ctx.padding, ctx.dilation
