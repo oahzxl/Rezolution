@@ -5,8 +5,8 @@ import math
 from mmseg.ops import resize
 from mmcv.utils.parrots_wrapper import _BatchNorm
 from mmcv.cnn import constant_init, kaiming_init
-from einops import rearrange, reduce, repeat
-from mmseg.models.utils.involution_cuda import _involution_cuda
+from einops import rearrange
+from mmcv.ops.carafe import CARAFEPack
 
 
 class Mish(nn.Module):
@@ -18,123 +18,7 @@ class Mish(nn.Module):
         return x
 
 
-class AlignCM(nn.Module):
-    def __init__(self, channels):
-        super(AlignCM, self).__init__()
-        self.conv1 = ConvModule(
-            in_channels=channels,
-            out_channels=channels // 2,
-            kernel_size=1,
-            padding=0,
-            stride=1,
-            norm_cfg=dict(type='BN'),
-            act_cfg=dict(type='ReLU'))
-        self.conv2 = ConvModule(
-            in_channels=channels // 2,
-            out_channels=2,
-            kernel_size=3,
-            stride=1,
-            padding=1,
-            act_cfg=None)
-
-        self.conv_t = ConvModule(
-            in_channels=channels,
-            out_channels=channels // 2,
-            kernel_size=3,
-            padding=1,
-            stride=1,
-            norm_cfg=dict(type='BN'),
-            act_cfg=dict(type='ReLU'))
-        self.conv_x = ConvModule(
-            in_channels=channels,
-            out_channels=channels // 2,
-            kernel_size=1,
-            padding=0,
-            stride=1,
-            norm_cfg=dict(type='BN'),
-            act_cfg=dict(type='ReLU'))
-
-    def forward(self, x, origin_x):
-        x = self.conv_x(x)
-        origin_x = self.conv_t(origin_x)
-
-        target_x = resize(origin_x, size=x.size()[2:], mode='bilinear', align_corners=False)
-        weight = torch.cat((x, target_x), dim=1)
-        weight = self.conv2(self.conv1(weight)).permute(0, 2, 3, 1)
-        weight = torch.tanh(weight)
-
-        w_bias = torch.linspace(start=-1, end=-1, steps=x.size(-2)).cuda().unsqueeze(1).repeat(1, x.size(-1)).unsqueeze(0).unsqueeze(-1)
-        h_bias = torch.linspace(start=-1, end=-1, steps=x.size(-1)).cuda().unsqueeze(0).repeat(x.size(-2), 1).unsqueeze(0).unsqueeze(-1)
-        bias = torch.cat((w_bias, h_bias), dim=-1)
-        weight = weight + bias
-
-        x = nn.functional.grid_sample(x, weight, mode='bilinear', align_corners=False)
-
-        return torch.cat((x, target_x), dim=1)
-
-
-class AlignFA(nn.Module):
-    def __init__(self, channels):
-        super(AlignFA, self).__init__()
-        self.conv1 = ConvModule(
-            in_channels=channels * 2,
-            out_channels=channels // 2,
-            kernel_size=1,
-            padding=0,
-            stride=1,
-            norm_cfg=dict(type='BN'),
-            act_cfg=dict(type='ReLU'))
-        self.conv2 = ConvModule(
-            in_channels=channels // 2,
-            out_channels=4,
-            kernel_size=3,
-            stride=1,
-            padding=1,
-            act_cfg=None)
-
-    def forward(self, x, origin_x):
-        target_x = resize(origin_x, size=x.size()[2:], mode='bilinear', align_corners=False)
-        weight = torch.cat((x, target_x), dim=1)
-        weight = torch.tanh(self.conv2(self.conv1(weight)).permute(0, 2, 3, 1))
-
-        w_bias = torch.linspace(start=-1, end=-1, steps=x.size(-2)).cuda().unsqueeze(1).repeat(1, x.size(-1)).unsqueeze(0).unsqueeze(-1)
-        h_bias = torch.linspace(start=-1, end=-1, steps=x.size(-1)).cuda().unsqueeze(0).repeat(x.size(-2), 1).unsqueeze(0).unsqueeze(-1)
-        bias = torch.cat((w_bias, h_bias, w_bias, h_bias), dim=-1)
-        weight = weight + bias
-
-        x = nn.functional.grid_sample(x, weight[:, :, :, :2], mode='bilinear', align_corners=True)
-        target_x = nn.functional.grid_sample(target_x, weight[:, :, :, 2:], mode='bilinear', align_corners=True)
-
-        return (x + target_x) / 2
-
-
-class Position(nn.Module):
-    def __init__(self, channels, norm_cfg, act_cfg):
-        super(Position, self).__init__()
-        self.conv1 = ConvModule(
-            in_channels=channels * 2,
-            out_channels=channels,
-            kernel_size=1,
-            padding=0,
-            stride=1,
-            norm_cfg=norm_cfg,
-            act_cfg=act_cfg)
-        self.conv2 = ConvModule(
-            in_channels=channels,
-            out_channels=channels,
-            kernel_size=3,
-            padding=1,
-            stride=1,
-            norm_cfg=norm_cfg,
-            act_cfg=act_cfg)
-
-    def forward(self, inputs, origin):
-        origin = resize(origin, size=inputs.size()[2:], mode='bilinear', align_corners=False)
-        x = torch.cat((inputs, origin), dim=1)
-        x = self.conv2(self.conv1(x))
-        return x
-
-
+# gru 6.09  cat 6.02 carafe 6.01
 class RevolutionNaive(nn.Module):
     def __init__(self,
                  channels,
@@ -144,6 +28,98 @@ class RevolutionNaive(nn.Module):
                  norm_cfg,
                  align_corners):
         super(RevolutionNaive, self).__init__()
+        self.pool_h = nn.AdaptiveMaxPool2d((None, 1))
+        self.pool_w = nn.AdaptiveMaxPool2d((1, None))
+        self.align_corners = align_corners
+        self.ratio = ratio
+        self.mid = max(64, channels // 4)
+
+        self.conv_expand = nn.Conv1d(
+            in_channels=self.mid,
+            out_channels=self.mid * self.ratio,
+            kernel_size=3,
+            padding=1,
+            stride=1)
+        self.conv_compress = ConvModule(
+            in_channels=channels,
+            out_channels=self.mid,
+            kernel_size=1,
+            padding=0,
+            stride=1,
+            norm_cfg=norm_cfg,
+            act_cfg=None)
+        self.conv_gate = ConvModule(
+            in_channels=self.mid,
+            out_channels=self.mid,
+            kernel_size=1,
+            padding=0,
+            stride=1,
+            norm_cfg=norm_cfg,
+            act_cfg=None)
+
+        self.act = Mish()
+
+        self.conv_h = nn.Conv2d(self.mid, channels, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(self.mid, channels, kernel_size=1, stride=1, padding=0)
+
+        # self.conv_h = nn.Conv2d(self.mid * 2, channels, kernel_size=1, stride=1, padding=0)
+        # self.conv_w = nn.Conv2d(self.mid * 2, channels, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+
+        out = resize(
+            x,
+            size=(x.shape[-2] * self.ratio, x.shape[-1] * self.ratio),
+            mode='bilinear',
+            align_corners=self.align_corners)
+
+        n, c, h, w = x.size()
+
+        x_h = self.pool_h(x)
+        o_h = self.pool_h(out)
+        x_w = self.pool_w(x).permute(0, 1, 3, 2)
+        o_w = self.pool_w(out).permute(0, 1, 3, 2)
+        x = torch.cat([x_h, o_h, x_w, o_w], dim=2)
+        x = self.act(self.conv_compress(x))
+        x_h, o_h, x_w, o_w = torch.split(x, [h, h * self.ratio, w, w * self.ratio], dim=2)
+
+        x_h = self.act(self.conv_expand(x_h.squeeze(-1))).view(n, self.mid, -1, 1)
+        x_g = self.conv_gate(x_h * o_h).sigmoid()
+        x_h = x_g * x_h + (1 - x_g) * o_h
+        x_h = self.conv_h(x_h)
+
+        x_w = self.act(self.conv_expand(x_w.squeeze(-1))).view(n, self.mid, -1, 1)
+        x_g = self.conv_gate(x_w * o_w).sigmoid()
+        x_w = x_g * x_w + (1 - x_g) * o_w
+        x_w = self.conv_w(x_w)
+        x_w = x_w.permute(0, 1, 3, 2)
+
+        # x_h = self.conv_expand(x_h.squeeze(-1)).view(n, self.mid, -1, 1)
+        # x_h = self.act(x_h)
+        # x_h = torch.cat([x_h, o_h], dim=1)
+        # x_h = self.conv_h(x_h)
+        #
+        # x_w = self.conv_expand(x_w.squeeze(-1)).view(n, self.mid, -1, 1)
+        # x_w = self.act(x_w)
+        # x_w = torch.cat([x_w, o_w], dim=1)
+        # x_w = self.conv_w(x_w)
+        # x_w = x_w.permute(0, 1, 3, 2)
+
+        x = out * x_w.sigmoid() * x_h.sigmoid()
+        out = self.act(x + out)
+        return out
+
+
+# 6.06
+class RevolutionNaive2(nn.Module):
+    def __init__(self,
+                 channels,
+                 kernel_size,
+                 stride,
+                 ratio,
+                 norm_cfg,
+                 align_corners):
+        super(RevolutionNaive2, self).__init__()
         self.pool_h = nn.AdaptiveMaxPool2d((None, 1))
         self.pool_w = nn.AdaptiveMaxPool2d((1, None))
         self.align_corners = align_corners
@@ -161,7 +137,7 @@ class RevolutionNaive(nn.Module):
             act_cfg=None)
         self.conv0 = ConvModule(
             in_channels=channels,
-            out_channels=channels * 2,
+            out_channels=channels * ratio,
             kernel_size=3,
             padding=1,
             stride=1,
@@ -386,6 +362,46 @@ class RevolutionNaive1(nn.Module):
                 kaiming_init(m)
             elif isinstance(m, (_BatchNorm, nn.GroupNorm)):
                 constant_init(m, 1)
+
+
+class ResizeCat(nn.Module):
+    def __init__(self, in_channels, in_index, norm_cfg, act_cfg):
+        super(ResizeCat, self).__init__()
+        self.resize = nn.ModuleList()
+        for i in in_index:
+            self.resize.append(RevolutionNaive(
+                channels=in_channels[i],
+                align_corners=False,
+                kernel_size=3,
+                stride=1,
+                ratio=2 ** i,
+                norm_cfg=norm_cfg))
+            # self.resize.append(CARAFEPack(
+            #     in_channels[i],
+            #     2 ** i,
+            #     up_kernel=5,
+            #     up_group=1,
+            #     encoder_kernel=3,
+            #     encoder_dilation=1,
+            #     compressed_channels=64))
+
+    def forward(self, x):
+        # inputs = [x[i] for i in range(4)]
+        # upsampled_inputs = [
+        #     self.resize[i](inputs[i]) for i in range(4)
+        # ]
+        upsampled_inputs = []
+        for i in range(4):
+            inputs = self.resize[i](x[i])
+            if inputs.shape[2:] != x[0].shape[2:]:
+                inputs = resize(
+                    inputs,
+                    size=x[0].shape[2:],
+                    mode='bilinear',
+                    align_corners=False)
+            upsampled_inputs.append(inputs)
+        inputs = torch.cat(upsampled_inputs, dim=1)
+        return inputs
 
 
 """

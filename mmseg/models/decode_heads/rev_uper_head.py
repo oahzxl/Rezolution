@@ -107,14 +107,14 @@ class RevUPerHead(BaseDecodeHead):
             # act_cfg=self.act_cfg
             align_corners=self.align_corners
         )
-        # self.carafe = CARAFEPack(
-        #     self.channels,
-        #     2,
-        #     up_kernel=5,
-        #     up_group=1,
-        #     encoder_kernel=3,
-        #     encoder_dilation=1,
-        #     compressed_channels=64)
+        self.carafe = CARAFEPack(
+            self.channels,
+            2,
+            up_kernel=5,
+            up_group=1,
+            encoder_kernel=3,
+            encoder_dilation=1,
+            compressed_channels=64)
 
         # PSP Module
         self.psp_modules = PPM(
