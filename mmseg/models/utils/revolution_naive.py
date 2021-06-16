@@ -22,6 +22,7 @@ class Mish(nn.Module):
 class RevolutionNaive(nn.Module):
     def __init__(self,
                  channels,
+                 mid_channels,
                  kernel_size,
                  stride,
                  ratio,
@@ -32,7 +33,7 @@ class RevolutionNaive(nn.Module):
         self.pool_w = nn.AdaptiveMaxPool2d((1, None))
         self.align_corners = align_corners
         self.ratio = ratio
-        self.mid = max(64, channels // 4)
+        self.mid = mid_channels
 
         self.conv_expand = nn.Conv1d(
             in_channels=self.mid,
@@ -54,7 +55,6 @@ class RevolutionNaive(nn.Module):
             kernel_size=1,
             padding=0,
             stride=1,
-            norm_cfg=norm_cfg,
             act_cfg=None)
 
         self.act = Mish()
@@ -365,12 +365,13 @@ class RevolutionNaive1(nn.Module):
 
 
 class ResizeCat(nn.Module):
-    def __init__(self, in_channels, in_index, norm_cfg, act_cfg):
+    def __init__(self, in_channels, mid_channels, in_index, norm_cfg, act_cfg):
         super(ResizeCat, self).__init__()
         self.resize = nn.ModuleList()
         for i in in_index:
             self.resize.append(RevolutionNaive(
                 channels=in_channels[i],
+                mid_channels=mid_channels,
                 align_corners=False,
                 kernel_size=3,
                 stride=1,

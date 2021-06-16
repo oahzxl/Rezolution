@@ -38,6 +38,7 @@ model = dict(decode_head=[
         in_index=(0, 1, 2, 3),
         input_transform='resize_concat',
         channels=512,
+        mid_channels=128,
         ocr_channels=256,
         dropout_ratio=-1,
         num_classes=21,

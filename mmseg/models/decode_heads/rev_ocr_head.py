@@ -95,7 +95,7 @@ class RevOCRHead(BaseCascadeDecodeHead):
             Default: 1.
     """
 
-    def __init__(self, ocr_channels, scale=1, **kwargs):
+    def __init__(self, ocr_channels, scale=1, mid_channels=None, **kwargs):
         super(RevOCRHead, self).__init__(**kwargs)
         self.ocr_channels = ocr_channels
         self.scale = scale
@@ -116,7 +116,8 @@ class RevOCRHead(BaseCascadeDecodeHead):
             conv_cfg=self.conv_cfg,
             norm_cfg=self.norm_cfg,
             act_cfg=self.act_cfg)
-        self.resize_cat = ResizeCat(kwargs['in_channels'], self.in_index, self.norm_cfg, self.act_cfg)
+        self.resize_cat = ResizeCat(kwargs['in_channels'], mid_channels, self.in_index,
+                                    self.norm_cfg, self.act_cfg)
 
     def forward(self, inputs, prev_output):
         """Forward function."""

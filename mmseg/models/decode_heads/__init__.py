@@ -24,11 +24,12 @@ from .rev_psp_head import RevPSPHead
 from .rev_psp_down_head import RevPSPDownHead
 from .rev_uper_head import RevUPerHead
 from .rev_ocr_head import RevOCRHead
+from .rev_fpn_head import RevFPNHead
 
 __all__ = [
     'FCNHead', 'PSPHead', 'ASPPHead', 'PSAHead', 'NLHead', 'GCHead', 'CCHead',
     'UPerHead', 'DepthwiseSeparableASPPHead', 'ANNHead', 'DAHead', 'OCRHead',
     'EncHead', 'DepthwiseSeparableFCNHead', 'FPNHead', 'EMAHead', 'DNLHead',
     'PointHead', 'APCHead', 'DMHead', 'LRASPPHead', 'REVHead',
-    'RevPSPHead', 'RevPSPDownHead', 'RevUPerHead', 'RevOCRHead'
+    'RevPSPHead', 'RevPSPDownHead', 'RevUPerHead', 'RevOCRHead', 'RevFPNHead'
 ]
