@@ -369,22 +369,22 @@ class ResizeCat(nn.Module):
         super(ResizeCat, self).__init__()
         self.resize = nn.ModuleList()
         for i in in_index:
-            # self.resize.append(RevolutionNaive(
-            #     channels=in_channels[i],
-            #     mid_channels=mid_channels,
-            #     align_corners=False,
-            #     kernel_size=3,
-            #     stride=1,
-            #     ratio=2 ** i,
-            #     norm_cfg=norm_cfg))
-            self.resize.append(CARAFEPack(
-                in_channels[i],
-                2 ** i,
-                up_kernel=5,
-                up_group=1,
-                encoder_kernel=3,
-                encoder_dilation=1,
-                compressed_channels=64))
+            self.resize.append(RevolutionNaive(
+                channels=in_channels[i],
+                mid_channels=mid_channels,
+                align_corners=False,
+                kernel_size=3,
+                stride=1,
+                ratio=2 ** i,
+                norm_cfg=norm_cfg))
+            # self.resize.append(CARAFEPack(
+            #     in_channels[i],
+            #     2 ** i,
+            #     up_kernel=5,
+            #     up_group=1,
+            #     encoder_kernel=3,
+            #     encoder_dilation=1,
+            #     compressed_channels=64))
 
     def forward(self, x):
         # inputs = [x[i] for i in range(4)]
