@@ -112,7 +112,7 @@ class RevolutionNaive2(nn.Module):
 
 
 # 6.06
-class RevolutionNaive(nn.Module):
+class RevolutionNaive3(nn.Module):
     def __init__(self,
                  channels,
                  mid_channels,
@@ -121,7 +121,7 @@ class RevolutionNaive(nn.Module):
                  ratio,
                  norm_cfg,
                  align_corners):
-        super(RevolutionNaive, self).__init__()
+        super(RevolutionNaive3, self).__init__()
         self.pool_h = nn.AdaptiveMaxPool2d((None, 1))
         self.pool_w = nn.AdaptiveMaxPool2d((1, None))
         self.align_corners = align_corners
@@ -179,15 +179,16 @@ class RevolutionNaive(nn.Module):
         return out
 
 
-class RevolutionNaive0(nn.Module):
+class RevolutionNaive(nn.Module):
     def __init__(self,
                  channels,
+                 mid_channels,
                  kernel_size,
                  stride,
                  ratio,
                  norm_cfg,
                  align_corners):
-        super(RevolutionNaive0, self).__init__()
+        super(RevolutionNaive, self).__init__()
         self.pool_h = nn.AdaptiveMaxPool2d((None, 1))
         self.pool_w = nn.AdaptiveMaxPool2d((1, None))
         self.align_corners = align_corners
@@ -205,8 +206,8 @@ class RevolutionNaive0(nn.Module):
             act_cfg=None)
         self.act = Mish()
 
-        self.conv_h = nn.Conv2d(mip, channels * 2, kernel_size=1, stride=1, padding=0)
-        self.conv_w = nn.Conv2d(mip, channels * 2, kernel_size=1, stride=1, padding=0)
+        self.conv_h = nn.Conv2d(mip, channels * ratio, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mip, channels * ratio, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
 
