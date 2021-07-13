@@ -13,13 +13,14 @@ class Mish(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, x):
+    @staticmethod
+    def forward(x):
         x = x * (torch.tanh(nn.functional.softplus(x)))
         return x
 
 
 # gru 6.09  cat 6.02 carafe 6.01
-class RevolutionNaive(nn.Module):
+class RevolutionNaive2(nn.Module):
     def __init__(self,
                  channels,
                  mid_channels,
@@ -111,15 +112,16 @@ class RevolutionNaive(nn.Module):
 
 
 # 6.06
-class RevolutionNaive2(nn.Module):
+class RevolutionNaive(nn.Module):
     def __init__(self,
                  channels,
+                 mid_channels,
                  kernel_size,
                  stride,
                  ratio,
                  norm_cfg,
                  align_corners):
-        super(RevolutionNaive2, self).__init__()
+        super(RevolutionNaive, self).__init__()
         self.pool_h = nn.AdaptiveMaxPool2d((None, 1))
         self.pool_w = nn.AdaptiveMaxPool2d((1, None))
         self.align_corners = align_corners
@@ -238,10 +240,10 @@ class RevolutionNaive0(nn.Module):
         return out
 
 
-class RevolutionNaive1(nn.Module):
+class RevolutionNaiveOld(nn.Module):
     def __init__(self, channels, kernel_size, stride, ratio, group_channels=16,
                  padding=None, norm_cfg=None, act_cfg=None):
-        super(RevolutionNaive1, self).__init__()
+        super(RevolutionNaiveOld, self).__init__()
         self.kernel_size = kernel_size
         self.stride = stride
         self.ratio = ratio
@@ -322,18 +324,6 @@ class RevolutionNaive1(nn.Module):
         x = self.unfold(inputs).view(
             batch_size, self.groups, self.group_channels, self.kernel_size, self.kernel_size, h, w)
 
-        # weight = x.permute(0, 5, 6, 1, 2, 3, 4).reshape(
-        #     batch_size * h * w, self.groups * self.group_channels, self.kernel_size, self.kernel_size)
-        # weight = self.activation(self.convn1(weight)).view(
-        #     batch_size, h, w, -1, self.new_size ** 2, self.kernel_size ** 2)
-        # weight = weight.permute(0, 3, 5, 4, 1, 2).reshape(batch_size, -1, h, w).contiguous()
-        # weight = self.convn2(weight)
-
-        # max
-        # weight = torch.cat(
-        #     [torch.max(x, dim=i).values.view(batch_size, -1, h, w) for i in [2, 3, 4]], dim=1)
-        # weight = self.conv2(self.activation(self.conv1(weight)))
-
         weight = torch.cat(
             [torch.max(x, dim=i).values.view(batch_size, -1, h, w) for i in [2, 3, 4]], dim=1)
         weight = self.activation(self.conv1(weight))
@@ -342,8 +332,6 @@ class RevolutionNaive1(nn.Module):
         weight_new = rearrange(weight_new, '(b h w) c n1 n2 -> b (c n1 n2) h w', h=h, w=w)
         weight = weight * self.activation(self.bn(weight_new))
         weight = self.conv3(weight)
-        # weight = rearrange(weight, '(b h w) (c k1 k2) n1 n2 -> b c 1 (k1 k2) (n1 n2) h w', b=batch_size, h=h, w=w,
-        #                    k1=self.kernel_size, k2=self.kernel_size, n1=self.new_size, n2=self.new_size)
 
         weight = weight.view(batch_size, self.groups, 1, self.kernel_size * self.kernel_size,
                              self.new_size * self.new_size, h, w)
