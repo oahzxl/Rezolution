@@ -67,13 +67,6 @@ class RevolutionNaive(nn.Module):
             stride=1,
             norm_cfg=norm_cfg,
             act_cfg=None)
-        self.conv_gate = ConvModule(
-            in_channels=self.mid,
-            out_channels=self.mid,
-            kernel_size=1,
-            padding=0,
-            stride=1,
-            act_cfg=None)
 
         self.act = nn.ReLU()
 
