@@ -56,8 +56,8 @@ class RevolutionNaive(nn.Module):
         self.conv_expand = nn.Conv1d(
             in_channels=self.mid,
             out_channels=self.mid * self.ratio,
-            kernel_size=kernel_size,
-            padding=kernel_size // 2,
+            kernel_size=3,
+            padding=1,
             stride=1)
         self.conv_compress = ConvModule(
             in_channels=channels,
@@ -277,6 +277,7 @@ class RevolutionNaive1(nn.Module):
 
 
 class RevolutionNaiveOld(nn.Module):
+    """ first method, same as CARAFE """
     def __init__(self, channels, kernel_size, stride, ratio, group_channels=16,
                  padding=None, norm_cfg=None, act_cfg=None):
         super(RevolutionNaiveOld, self).__init__()
@@ -392,41 +393,41 @@ class ResizeCat(nn.Module):
     def __init__(self, in_channels, mid_channels, in_index, norm_cfg, act_cfg):
         super(ResizeCat, self).__init__()
         self.resize = nn.ModuleList()
-        for i in in_index[:-1]:
-            # self.resize.append(RevolutionNaive(
-            #     channels=[36 + 72 + 144, 144 + 72, 144][i],
-            #     mid_channels=mid_channels,
-            #     align_corners=False,
-            #     kernel_size=5,
-            #     stride=1,
-            #     ratio=2,
-            #     norm_cfg=norm_cfg))
-            self.resize.append(CARAFEPack(
-                [36 + 72 + 144, 144 + 72, 144][i],
-                2,
-                up_kernel=5,
-                up_group=1,
-                encoder_kernel=3,
-                encoder_dilation=1,
-                compressed_channels=64))
+        for i in in_index:
+            self.resize.append(RevolutionNaive(
+                channels=in_channels[i],
+                mid_channels=mid_channels,
+                align_corners=False,
+                kernel_size=3,
+                stride=1,
+                ratio=2 ** i,
+                norm_cfg=norm_cfg))
+            # self.resize.append(CARAFEPack(
+            #     in_channels[i],
+            #     2 ** i,
+            #     up_kernel=5,
+            #     up_group=1,
+            #     encoder_kernel=3,
+            #     encoder_dilation=1,
+            #     compressed_channels=64))
 
-    def forward(self, inputs):
+    def forward(self, x):
         # inputs = [x[i] for i in range(4)]
         # upsampled_inputs = [
         #     self.resize[i](inputs[i]) for i in range(4)
         # ]
-        x = inputs[-1]
-        for i in range(2, -1, -1):
-            x = self.resize[i](x)
-            if x.shape[2:] != inputs[i].shape[2:]:
-                x = resize(
-                    x,
-                    size=inputs[i].shape[2:],
+        upsampled_inputs = []
+        for i in range(4):
+            inputs = self.resize[i](x[i])
+            if inputs.shape[2:] != x[0].shape[2:]:
+                inputs = resize(
+                    inputs,
+                    size=x[0].shape[2:],
                     mode='bilinear',
                     align_corners=False)
-            x = torch.cat((x, inputs[i]), dim=1)
-
-        return x
+            upsampled_inputs.append(inputs)
+        inputs = torch.cat(upsampled_inputs, dim=1)
+        return inputs
 
 
 """
