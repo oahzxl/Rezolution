@@ -5,7 +5,7 @@ import os.path as osp
 import time
 
 if os.getcwd().split("/")[-1] == "tools":
-    os.chdir("/home/zxl/mm/mmsegmentation")
+    os.chdir("/home/zxl/repos/mmsegmentation")
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 import mmcv

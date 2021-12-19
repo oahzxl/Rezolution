@@ -396,9 +396,9 @@ class ResizeCat(nn.Module):
         for i in in_index:
             self.resize.append(RevolutionNaive(
                 channels=in_channels[i],
-                mid_channels=mid_channels,
+                mid_channels=in_channels[i] // 2,
                 align_corners=False,
-                kernel_size=3,
+                kernel_size=[13, 9, 5, 3][i],
                 stride=1,
                 ratio=2 ** i,
                 norm_cfg=norm_cfg))
