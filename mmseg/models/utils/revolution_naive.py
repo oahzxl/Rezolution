@@ -84,28 +84,34 @@ class RevolutionNaive(nn.Module):
         n, c, h, w = x.size()
 
         x_h = self.pool_h(x)
-        o_h = self.pool_h(out)
         x_w = self.pool_w(x).permute(0, 1, 3, 2)
-        o_w = self.pool_w(out).permute(0, 1, 3, 2)
-        x = torch.cat([x_h, o_h, x_w, o_w], dim=2)
+        x = torch.cat([x_h, x_w], dim=2)
         x = self.act(self.conv_compress(x))
-        x_h, o_h, x_w, o_w = torch.split(x, [h, h * self.ratio, w, w * self.ratio], dim=2)
-
+        x_h, x_w = torch.split(x, [h, w], dim=2)
         x_h = self.act(self.conv_expand(x_h.squeeze(-1))).unsqueeze(-1)
         if self.ratio != 1:
             x_h = rearrange(x_h, 'b (c n) w h -> b c (w n) h', n=self.ratio)
-        x_h = torch.cat([x_h, o_h], dim=1)
-        x_h = self.conv_h(x_h)
-
         x_w = self.act(self.conv_expand(x_w.squeeze(-1))).unsqueeze(-1)
         if self.ratio != 1:
             x_w = rearrange(x_w, 'b (c n) w h -> b c (w n) h', n=self.ratio)
-        x_w = torch.cat([x_w, o_w], dim=1)
-        x_w = self.conv_w(x_w)
-        x_w = x_w.permute(0, 1, 3, 2)
 
-        x = out * x_w.sigmoid() * x_h.sigmoid()
-        out = self.act(x + out)
+        for i in range(2):
+            o_h = self.pool_h(out)
+            o_w = self.pool_w(out).permute(0, 1, 3, 2)
+
+            x = torch.cat([o_h, o_w], dim=2)
+            x = self.act(self.conv_compress(x))
+            o_h, o_w = torch.split(x, [h * self.ratio, w * self.ratio], dim=2)
+
+            o_h = torch.cat([x_h, o_h], dim=1)
+            o_h = self.conv_h(o_h)
+
+            o_w = torch.cat([x_w, o_w], dim=1)
+            o_w = self.conv_w(o_w)
+            o_w = o_w.permute(0, 1, 3, 2)
+
+            x = out * o_w.sigmoid() * o_h.sigmoid()
+            out = self.act(x + out)
         return out
 
 
@@ -118,7 +124,7 @@ class RevolutionNaive4(nn.Module):
                  ratio,
                  norm_cfg,
                  align_corners):
-        super(RevolutionNaive, self).__init__()
+        super(RevolutionNaive4, self).__init__()
         self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
         self.pool_w = nn.AdaptiveAvgPool2d((1, None))
         self.align_corners = align_corners

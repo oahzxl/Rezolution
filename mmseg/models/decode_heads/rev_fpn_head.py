@@ -51,7 +51,8 @@ class RevFPNHead(BaseDecodeHead):
                             mode='bilinear',
                             align_corners=self.align_corners))
             self.scale_heads.append(nn.Sequential(*scale_head))
-        self.resize_cat = ResizeCat(kwargs['in_channels'], self.in_index, self.norm_cfg, self.act_cfg)
+        self.resize_cat = ResizeCat(kwargs['in_channels'], mid_channels, self.in_index,
+                                    self.norm_cfg, self.act_cfg)
 
     def forward(self, inputs):
 
