@@ -1,5 +1,5 @@
 # model settings
-norm_cfg = dict(type='BN', requires_grad=True)
+norm_cfg = dict(type='SyncBN', requires_grad=True)
 model = dict(
     type='CascadeEncoderDecoder',
     num_stages=2,
@@ -35,7 +35,7 @@ model = dict(
                 num_channels=(18, 36, 72, 144)))),
     decode_head=[
         dict(
-            type='RevFCNHead',
+            type='FCNHead',
             in_channels=[18, 36, 72, 144],
             channels=sum([18, 36, 72, 144]),
             in_index=(0, 1, 2, 3),

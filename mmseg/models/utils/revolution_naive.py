@@ -52,6 +52,102 @@ class RevolutionNaive(nn.Module):
         self.align_corners = align_corners
         self.ratio = ratio
         self.mid = mid_channels
+        self.query_conv = nn.Conv1d(in_channels=self.mid, out_channels=channels // 4, kernel_size=1)
+        self.key_conv = nn.Conv1d(in_channels=self.mid, out_channels=channels // 4, kernel_size=1)
+        self.value_conv = nn.Conv1d(in_channels=self.mid, out_channels=self.mid, kernel_size=1)
+
+        self.conv_expand = nn.Conv1d(
+            in_channels=self.mid,
+            out_channels=self.mid * self.ratio,
+            kernel_size=kernel_size,
+            padding=kernel_size // 2,
+            stride=1)
+        self.conv_compress = nn.Conv1d(
+            in_channels=channels,
+            out_channels=self.mid,
+            kernel_size=1,
+            padding=0,
+            stride=1)
+
+        self.act = nn.ReLU()
+
+        self.conv_back = nn.Conv1d(self.mid, channels, kernel_size=3, stride=1, padding=1)
+
+        self.gamma = nn.Parameter(torch.zeros(1))
+
+        self.softmax = nn.Softmax(dim=-1)
+
+
+    def forward(self, x):
+
+        out = resize(
+            x,
+            size=(x.shape[-2] * self.ratio, x.shape[-1] * self.ratio),
+            mode='bilinear',
+            align_corners=self.align_corners)
+
+        n, c, h, w = x.size()
+
+        x_h = self.pool_h(x).squeeze(-1)
+        x_w = self.pool_w(x).squeeze(-2)
+        x = torch.cat([x_h,x_w], dim=2)
+        x = self.act(self.conv_compress(x))
+        x_h, x_w = torch.split(x, [h, w], dim=2)
+
+        x_h = self.act(self.conv_expand(x_h))
+        x_w = self.act(self.conv_expand(x_w))
+        if self.ratio != 1:
+            x_h = rearrange(x_h, 'b (c n) x -> b c (x n)', n=self.ratio)
+            x_w = rearrange(x_w, 'b (c n) x -> b c (x n)', n=self.ratio)
+
+        x_h_key = self.key_conv(x_h)
+        x_h_value = self.value_conv(x_h)
+        x_w_key = self.key_conv(x_w)
+        x_w_value = self.value_conv(x_w)
+
+        for i in range(1):
+            o_h = self.pool_h(out).squeeze(-1)
+            o_w = self.pool_w(out).squeeze(-2)
+
+            x = torch.cat([o_h, o_w], dim=2)
+            x = self.act(self.conv_compress(x))
+            o_h, o_w = torch.split(x, [h * self.ratio, w * self.ratio], dim=2)
+
+            o_h_query = self.query_conv(o_h)
+            o_w_query = self.query_conv(o_w)
+
+            h_attn = torch.bmm(o_h_query.permute(0, 2, 1), x_h_key)
+            h_attn = torch.bmm(self.softmax(h_attn), x_h_value.permute(0, 2, 1))
+            o_h = o_h + h_attn.permute(0, 2, 1)
+
+            w_attn = torch.bmm(o_w_query.permute(0, 2, 1), x_w_key)
+            w_attn = torch.bmm(self.softmax(w_attn), x_w_value.permute(0, 2, 1))
+            o_w = o_w + w_attn.permute(0, 2, 1)
+
+            # x = self.conv_back(o_w.unsqueeze(-2) + o_h.unsqueeze(-1))
+            x = self.conv_back(o_w).unsqueeze(-2) + self.conv_back(o_h).unsqueeze(-1)
+
+            out = out + self.gamma * x
+            out = self.act(out)
+
+            return out
+
+
+class RevolutionNaive22(nn.Module):
+    def __init__(self,
+                 channels,
+                 mid_channels,
+                 kernel_size,
+                 stride,
+                 ratio,
+                 norm_cfg,
+                 align_corners):
+        super(RevolutionNaive22, self).__init__()
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+        self.align_corners = align_corners
+        self.ratio = ratio
+        self.mid = mid_channels
 
         self.conv_expand = nn.Conv1d(
             in_channels=self.mid,
@@ -72,6 +168,9 @@ class RevolutionNaive(nn.Module):
 
         self.conv_h = nn.Conv2d(self.mid * 2, channels, kernel_size=1, stride=1, padding=0)
         self.conv_w = nn.Conv2d(self.mid * 2, channels, kernel_size=1, stride=1, padding=0)
+
+        self.gamma = nn.Parameter(torch.zeros(1))
+
 
     def forward(self, x):
 
@@ -110,9 +209,8 @@ class RevolutionNaive(nn.Module):
             o_w = self.conv_w(o_w)
             o_w = o_w.permute(0, 1, 3, 2)
 
-            x = out * o_w.sigmoid() * o_h.sigmoid()
-            out = self.act(x + out)
-        return out
+            x = o_w * o_h
+            return self.act(self.gamma * x + out)
 
 
 class RevolutionNaive4(nn.Module):
@@ -134,8 +232,8 @@ class RevolutionNaive4(nn.Module):
         self.conv_expand = nn.Conv1d(
             in_channels=self.mid,
             out_channels=self.mid * self.ratio,
-            kernel_size=3,
-            padding=1,
+            kernel_size=kernel_size,
+            padding=kernel_size//2,
             stride=1)
         self.conv_compress = ConvModule(
             in_channels=channels,
@@ -400,22 +498,27 @@ class ResizeCat(nn.Module):
         super(ResizeCat, self).__init__()
         self.resize = nn.ModuleList()
         for i in in_index:
-            self.resize.append(RevolutionNaive(
-                channels=in_channels[i],
-                mid_channels=in_channels[i] // 2,
-                align_corners=False,
-                kernel_size=[13, 9, 5, 3][i],
-                stride=1,
-                ratio=2 ** i,
-                norm_cfg=norm_cfg))
-            # self.resize.append(CARAFEPack(
-            #     in_channels[i],
-            #     2 ** i,
-            #     up_kernel=5,
-            #     up_group=1,
-            #     encoder_kernel=3,
-            #     encoder_dilation=1,
-            #     compressed_channels=64))
+            # self.resize.append(RevolutionNaive(
+            #     channels=in_channels[i],
+            #     mid_channels=in_channels[i] // 2,
+            #     align_corners=False,
+            #     kernel_size=[13, 9, 5, 3][i],
+            #     stride=1,
+            #     ratio=2 ** i,
+            #     norm_cfg=norm_cfg))
+            self.resize.append(CARAFEPack(
+                in_channels[i],
+                2 ** i,
+                up_kernel=5,
+                up_group=1,
+                encoder_kernel=3,
+                encoder_dilation=1,
+                compressed_channels=64))
+
+            # Carafe: flops: 430.35   para: 13.28
+            # attn ca: flops: 442.71 para: 12.39
+            # base: 426.44 12.29
+
 
     def forward(self, x):
         # inputs = [x[i] for i in range(4)]
