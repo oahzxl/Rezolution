@@ -97,14 +97,31 @@ class RevUPerHead(BaseDecodeHead):
         super(RevUPerHead, self).__init__(
             input_transform='multiple_select', **kwargs)
 
-        self.revolution2x = RevolutionNaive(
+        self.upsample_ppm = RevolutionNaive(
             channels=self.channels,
-            kernel_size=3,
+            kernel_size=5,
             stride=1,
             ratio=2,
-            # group_channels=64,
             norm_cfg=self.norm_cfg,
-            # act_cfg=self.act_cfg
+            mid_channels=64,
+            align_corners=self.align_corners
+        )
+        self.upsample_fpn = RevolutionNaive(
+            channels=self.channels,
+            kernel_size=5,
+            stride=1,
+            ratio=2,
+            norm_cfg=self.norm_cfg,
+            mid_channels=64,
+            align_corners=self.align_corners
+        )
+        self.upsample_fuse = RevolutionNaive(
+            channels=self.channels,
+            kernel_size=5,
+            stride=1,
+            ratio=2,
+            norm_cfg=self.norm_cfg,
+            mid_channels=64,
             align_corners=self.align_corners
         )
         self.carafe = CARAFEPack(
@@ -125,7 +142,7 @@ class RevUPerHead(BaseDecodeHead):
             norm_cfg=self.norm_cfg,
             act_cfg=self.act_cfg,
             align_corners=self.align_corners,
-            revolution=self.revolution2x
+            revolution=self.upsample_ppm
             # revolution=self.carafe,
         )
         self.bottleneck = ConvModule(
@@ -195,8 +212,7 @@ class RevUPerHead(BaseDecodeHead):
         # build top-down path
         used_backbone_levels = len(laterals)
         for i in range(used_backbone_levels - 1, 0, -1):
-            new = self.revolution2x(laterals[i])
-            # new = self.carafe(laterals[i])
+            new = self.upsample_fpn(laterals[i])
             if new.shape[2:] != laterals[i - 1].shape[2:]:
                 new = resize(
                     new,
@@ -216,12 +232,18 @@ class RevUPerHead(BaseDecodeHead):
         for i in range(used_backbone_levels - 1, 0, -1):
             fpn_outs[i] = resize(
                 fpn_outs[i],
-                size=fpn_outs[0].shape[2:],
+                size=(fpn_outs[0].size(-2) // 2, fpn_outs[0].size(-1) // 2),
                 mode='bilinear',
                 align_corners=self.align_corners)
+            fpn_outs[i] = self.upsample_fuse(fpn_outs[i])
+            if fpn_outs[i].shape[2:] != fpn_outs[0].shape[2:]:
+                fpn_outs[i] = resize(
+                    fpn_outs[i],
+                    size=(fpn_outs[0].size(-2) // 2, fpn_outs[0].size(-1) // 2),
+                    mode='bilinear',
+                    align_corners=self.align_corners)
 
         fpn_outs = torch.cat(fpn_outs, dim=1)
-
         output = self.fpn_bottleneck(fpn_outs)
         output = self.cls_seg(output)
         return output

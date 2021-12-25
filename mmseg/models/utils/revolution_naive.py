@@ -51,12 +51,23 @@ class RevolutionNaive(nn.Module):
         self.pool_w = nn.AdaptiveAvgPool2d((1, None))
         self.align_corners = align_corners
         self.ratio = ratio
-        self.mid = mid_channels
-        self.query_conv = nn.Conv1d(in_channels=self.mid, out_channels=channels // 4, kernel_size=1)
-        self.key_conv = nn.Conv1d(in_channels=self.mid, out_channels=channels // 4, kernel_size=1)
+        self.mid = channels // 2
+
+        self.query_self = nn.Conv1d(in_channels=self.mid, out_channels=self.mid // 2, kernel_size=1)
+        self.key_self = nn.Conv1d(in_channels=self.mid, out_channels=self.mid // 2, kernel_size=1)
+        self.value_self = nn.Conv1d(in_channels=self.mid, out_channels=self.mid, kernel_size=1)
+
+        self.query_conv = nn.Conv1d(in_channels=self.mid, out_channels=self.mid // 2, kernel_size=1)
+        self.key_conv = nn.Conv1d(in_channels=self.mid, out_channels=self.mid // 2, kernel_size=1)
         self.value_conv = nn.Conv1d(in_channels=self.mid, out_channels=self.mid, kernel_size=1)
 
-        self.conv_expand = nn.Conv1d(
+        self.conv_expand_h = nn.Conv1d(
+            in_channels=self.mid,
+            out_channels=self.mid * self.ratio,
+            kernel_size=kernel_size,
+            padding=kernel_size // 2,
+            stride=1)
+        self.conv_expand_w = nn.Conv1d(
             in_channels=self.mid,
             out_channels=self.mid * self.ratio,
             kernel_size=kernel_size,
@@ -71,7 +82,8 @@ class RevolutionNaive(nn.Module):
 
         self.act = nn.ReLU()
 
-        self.conv_back = nn.Conv1d(self.mid, channels, kernel_size=3, stride=1, padding=1)
+        self.conv_back_w = nn.Conv1d(self.mid, channels, kernel_size=1, stride=1, padding=0)
+        self.conv_back_h = nn.Conv1d(self.mid, channels, kernel_size=1, stride=1, padding=0)
 
         self.gamma = nn.Parameter(torch.zeros(1))
 
@@ -94,11 +106,25 @@ class RevolutionNaive(nn.Module):
         x = self.act(self.conv_compress(x))
         x_h, x_w = torch.split(x, [h, w], dim=2)
 
-        x_h = self.act(self.conv_expand(x_h))
-        x_w = self.act(self.conv_expand(x_w))
+        x_h = self.act(self.conv_expand_h(x_h))
+        x_w = self.act(self.conv_expand_w(x_w))
         if self.ratio != 1:
             x_h = rearrange(x_h, 'b (c n) x -> b c (x n)', n=self.ratio)
             x_w = rearrange(x_w, 'b (c n) x -> b c (x n)', n=self.ratio)
+
+        x_h_query = self.query_self(x_h)
+        x_h_key = self.key_self(x_h)
+        x_h_value = self.value_self(x_h)
+        x_h = torch.bmm(x_h_query.permute(0, 2, 1), x_h_key)
+        x_h = torch.bmm(self.softmax(x_h), x_h_value.permute(0, 2, 1)).permute(0, 2, 1)
+        x_h = self.act(x_h)
+
+        x_w_query = self.query_self(x_w)
+        x_w_key = self.key_self(x_w)
+        x_w_value = self.value_self(x_w)
+        x_w = torch.bmm(x_w_query.permute(0, 2, 1), x_w_key)
+        x_w = torch.bmm(self.softmax(x_w), x_w_value.permute(0, 2, 1)).permute(0, 2, 1)
+        x_w = self.act(x_w)
 
         x_h_key = self.key_conv(x_h)
         x_h_value = self.value_conv(x_h)
@@ -117,15 +143,13 @@ class RevolutionNaive(nn.Module):
             o_w_query = self.query_conv(o_w)
 
             h_attn = torch.bmm(o_h_query.permute(0, 2, 1), x_h_key)
-            h_attn = torch.bmm(self.softmax(h_attn), x_h_value.permute(0, 2, 1))
-            o_h = o_h + h_attn.permute(0, 2, 1)
+            h_attn = torch.bmm(self.softmax(h_attn), x_h_value.permute(0, 2, 1)).permute(0, 2, 1)
 
             w_attn = torch.bmm(o_w_query.permute(0, 2, 1), x_w_key)
-            w_attn = torch.bmm(self.softmax(w_attn), x_w_value.permute(0, 2, 1))
-            o_w = o_w + w_attn.permute(0, 2, 1)
+            w_attn = torch.bmm(self.softmax(w_attn), x_w_value.permute(0, 2, 1)).permute(0, 2, 1)
 
             # x = self.conv_back(o_w.unsqueeze(-2) + o_h.unsqueeze(-1))
-            x = self.conv_back(o_w).unsqueeze(-2) + self.conv_back(o_h).unsqueeze(-1)
+            x = self.conv_back_w(w_attn).unsqueeze(-2) + self.conv_back_h(h_attn).unsqueeze(-1)
 
             out = out + self.gamma * x
             out = self.act(out)
@@ -498,22 +522,22 @@ class ResizeCat(nn.Module):
         super(ResizeCat, self).__init__()
         self.resize = nn.ModuleList()
         for i in in_index:
-            # self.resize.append(RevolutionNaive(
-            #     channels=in_channels[i],
-            #     mid_channels=in_channels[i] // 2,
-            #     align_corners=False,
-            #     kernel_size=[13, 9, 5, 3][i],
-            #     stride=1,
-            #     ratio=2 ** i,
-            #     norm_cfg=norm_cfg))
-            self.resize.append(CARAFEPack(
-                in_channels[i],
-                2 ** i,
-                up_kernel=5,
-                up_group=1,
-                encoder_kernel=3,
-                encoder_dilation=1,
-                compressed_channels=64))
+            self.resize.append(RevolutionNaive(
+                channels=in_channels[i],
+                mid_channels=in_channels[i] // 2,
+                align_corners=False,
+                kernel_size=[13, 9, 5, 3][i],
+                stride=1,
+                ratio=2 ** i,
+                norm_cfg=norm_cfg))
+            # self.resize.append(CARAFEPack(
+            #     in_channels[i],
+            #     2 ** i,
+            #     up_kernel=5,
+            #     up_group=1,
+            #     encoder_kernel=3,
+            #     encoder_dilation=1,
+            #     compressed_channels=64))
 
             # Carafe: flops: 430.35   para: 13.28
             # attn ca: flops: 442.71 para: 12.39
