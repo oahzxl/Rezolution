@@ -51,15 +51,22 @@ class RevolutionNaive(nn.Module):
         self.pool_w = nn.AdaptiveAvgPool2d((1, None))
         self.align_corners = align_corners
         self.ratio = ratio
-        self.mid = channels // 2
-
-        self.query_self = nn.Conv1d(in_channels=self.mid, out_channels=self.mid // 2, kernel_size=1)
-        self.key_self = nn.Conv1d(in_channels=self.mid, out_channels=self.mid // 2, kernel_size=1)
-        self.value_self = nn.Conv1d(in_channels=self.mid, out_channels=self.mid, kernel_size=1)
-
-        self.query_conv = nn.Conv1d(in_channels=self.mid, out_channels=self.mid // 2, kernel_size=1)
-        self.key_conv = nn.Conv1d(in_channels=self.mid, out_channels=self.mid // 2, kernel_size=1)
+        self.mid = channels // 2 if channels // 2 % 2 == 0 else channels // 2 + 1
+        self.query_conv = nn.Conv1d(in_channels=self.mid, out_channels=self.mid, kernel_size=1)
+        self.key_conv = nn.Conv1d(in_channels=self.mid, out_channels=self.mid, kernel_size=1)
         self.value_conv = nn.Conv1d(in_channels=self.mid, out_channels=self.mid, kernel_size=1)
+
+        # self.query_self = nn.Conv1d(in_channels=self.mid, out_channels=self.mid // 2, kernel_size=1)
+        # self.key_self = nn.Conv1d(in_channels=self.mid, out_channels=self.mid // 2, kernel_size=1)
+        # self.value_self = nn.Conv1d(in_channels=self.mid, out_channels=self.mid, kernel_size=1)
+
+        self.pe = torch.zeros(500, self.mid)
+        position = torch.arange(0, 500).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, self.mid, 2) *
+                             -(math.log(10000.0) / self.mid))
+        self.pe[:, 0::2] = torch.sin(position * div_term)
+        self.pe[:, 1::2] = torch.cos(position * div_term)
+        self.pe = self.pe.unsqueeze(0).permute(0, 2, 1).cuda()
 
         self.conv_expand_h = nn.Conv1d(
             in_channels=self.mid,
@@ -112,22 +119,27 @@ class RevolutionNaive(nn.Module):
             x_h = rearrange(x_h, 'b (c n) x -> b c (x n)', n=self.ratio)
             x_w = rearrange(x_w, 'b (c n) x -> b c (x n)', n=self.ratio)
 
-        x_h_query = self.query_self(x_h)
-        x_h_key = self.key_self(x_h)
-        x_h_value = self.value_self(x_h)
-        x_h = torch.bmm(x_h_query.permute(0, 2, 1), x_h_key)
-        x_h = torch.bmm(self.softmax(x_h), x_h_value.permute(0, 2, 1)).permute(0, 2, 1)
-        x_h = self.act(x_h)
+        x_h = x_h + self.pe[:, :, :x_h.size(-1)]
 
-        x_w_query = self.query_self(x_w)
-        x_w_key = self.key_self(x_w)
-        x_w_value = self.value_self(x_w)
-        x_w = torch.bmm(x_w_query.permute(0, 2, 1), x_w_key)
-        x_w = torch.bmm(self.softmax(x_w), x_w_value.permute(0, 2, 1)).permute(0, 2, 1)
-        x_w = self.act(x_w)
+        # x_h_query = self.query_self(x_h)
+        # x_h_key = self.key_self(x_h)
+        # x_h_value = self.value_self(x_h)
+        # x_h = torch.bmm(x_h_query.permute(0, 2, 1), x_h_key)
+        # x_h = torch.bmm(self.softmax(x_h), x_h_value.permute(0, 2, 1)).permute(0, 2, 1)
+        # x_h = self.act(x_h)
 
         x_h_key = self.key_conv(x_h)
         x_h_value = self.value_conv(x_h)
+
+        x_w = x_w + self.pe[:, :, :x_w.size(-1)]
+
+        # x_w_query = self.query_self(x_w)
+        # x_w_key = self.key_self(x_w)
+        # x_w_value = self.value_self(x_w)
+        # x_w = torch.bmm(x_w_query.permute(0, 2, 1), x_w_key)
+        # x_w = torch.bmm(self.softmax(x_w), x_w_value.permute(0, 2, 1)).permute(0, 2, 1)
+        # x_w = self.act(x_w)
+
         x_w_key = self.key_conv(x_w)
         x_w_value = self.value_conv(x_w)
 
@@ -139,7 +151,9 @@ class RevolutionNaive(nn.Module):
             x = self.act(self.conv_compress(x))
             o_h, o_w = torch.split(x, [h * self.ratio, w * self.ratio], dim=2)
 
+            o_h = o_h + self.pe[:, :, :o_h.size(-1)]
             o_h_query = self.query_conv(o_h)
+            o_w = o_w + self.pe[:, :, :o_w.size(-1)]
             o_w_query = self.query_conv(o_w)
 
             h_attn = torch.bmm(o_h_query.permute(0, 2, 1), x_h_key)
